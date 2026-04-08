@@ -1,0 +1,32 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+src-tauri/target/
+src-tauri/gen/schemas/
+
+# Rust
+**/*.rs.bk
+Cargo.lock.bak
+
+# Logs / debug
+*.log
+debug.log
+single_instance_debug.log
+
+# Editor / OS
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+
+# Local settings / data
+settings.json
+launcher.db
+launcher.db-journal
+icons/
+
+# Built executable (keep out of repo; produced by `tauri build`)
+nanogramLauncher.exe
