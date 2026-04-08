@@ -26,7 +26,8 @@ Thumbs.db
 settings.json
 launcher.db
 launcher.db-journal
-icons/
+# Runtime icon cache (app data dir) — NOT src-tauri/icons which are app bundle assets
+/icons/
 
 # Built executable (keep out of repo; produced by `tauri build`)
 nanogramLauncher.exe

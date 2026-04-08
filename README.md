@@ -207,8 +207,8 @@ CARGO_TARGET_DIR="C:/tmp/launcher-target" npx tauri build
 
 ## ライセンス
 
-> （ライセンス情報をここに追加）
+[MIT License](LICENSE) — Copyright (c) 2026 合同会社ナノグラム
 
 ## 作者
 
-> 合同会社ナノグラム
+合同会社ナノグラム
