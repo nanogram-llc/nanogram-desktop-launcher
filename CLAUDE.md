@@ -59,18 +59,20 @@ React (src/) → invoke() → Tauri IPC → Rust Commands (src-tauri/src/command
 ```
 src/                          # React フロントエンド
   App.tsx                     # ウィンドウラベルで launcher/settings を分岐
-  components/launcher/        # ランチャーUI (SearchBar, ResultsList, RecentStrip)
-  components/settings/        # 設定UI (FolderManager, AppTable, GeneralSettings)
+  components/launcher/        # ランチャーUI (SearchBar, ResultsList, RecentStrip, ResultItem)
+  components/settings/        # 設定UI (FolderManager, AppTable, GeneralSettings, CommandManager)
   lib/tauri.ts                # 全Rustコマンドのinvoke()ラッパー
   lib/types.ts                # 共有型定義
 
 src-tauri/src/                # Rust バックエンド
-  lib.rs                      # Tauriセットアップ (プラグイン, vibrancy, blur, tray, 初期サイズ)
+  lib.rs                      # Tauriセットアップ (プラグイン, vibrancy, blur, tray, 初期サイズ, autostart同期)
   hotkey.rs                   # Ctrl×2検出(GetAsyncKeyState) + DPI対応モニター配置
   tray.rs                     # システムトレイメニュー
   commands/                   # Tauriコマンド (apps, folders, scan, icons, settings, window)
     window.rs                 # set_blur_hide, resize_window, get_exe_dir, calc_window_size
-    apps.rs                   # launch_app(重複防止), is_process_running, bring_process_to_front
+    apps.rs                   # launch_app(重複防止), launch_app_as_admin, launch_command,
+                              #   register_command, update_command, get_command_data
+    settings.rs               # get_settings, update_settings, apply_autostart
   db/                         # SQLite (init, models, queries)
   scanner/                    # プラットフォーム別スキャナー (windows/macos/linux)
   icons/                      # プラットフォーム別アイコン抽出
@@ -80,8 +82,13 @@ src-tauri/src/                # Rust バックエンド
 
 | コマンド | 用途 |
 |---|---|
-| `get_apps(query?, limit)` | 検索 or 最近/頻出アプリ取得 (ランキング付き、item_type='app'のみ) |
+| `get_apps(query?, limit)` | 検索 or 最近/頻出アプリ取得 (ランキング付き、app/command を対象) |
 | `launch_app(id)` | アプリ起動 + 重複チェック + 使用回数更新 |
+| `launch_app_as_admin(id)` | `ShellExecuteW(runas)` でUAC昇格起動 (.lnk は解決済みexeに適用) |
+| `launch_command(id)` | コマンドアイテム起動 (一時.batファイル経由、admin時はrunas) |
+| `register_command(name, cmd, admin, keep_open)` | コマンドアイテム登録 |
+| `update_command(id, cmd, admin, keep_open)` | コマンドアイテム更新 |
+| `get_command_data(id)` | コマンドデータ取得 (編集用) |
 | `add_folder(path)` | フォルダ追加 + 初回スキャン → `{folder, app_count}` |
 | `rescan_folder(id, mode)` | `"add_new"` or `"add_all_except_excluded"` |
 | `get_startmenu_paths()` | Windowsスタートメニューパス取得 |
@@ -121,21 +128,37 @@ score = 名前完全一致(100) / 前方一致(80) / 部分一致(50) / 部分�
 - アプリ起動時にクエリを履歴に追加（重複は先頭に移動）
 - `Ctrl+↑/↓` で履歴をナビゲート（`↑/↓` は検索結果の候補選択に使用）
 
-## データ保存先
+## データ保存先 (ポータブル構成)
 
-- **DB**: `{app_data_dir}/launcher.db` (アプリ・フォルダ情報)
-- **アイコンキャッシュ**: `{app_data_dir}/icons/*.png`
+全データをEXE隣に置くことで、フォルダごとコピーするだけで別環境に移行可能:
+
+- **DB**: `{exe_dir}/launcher.db`
+- **アイコンキャッシュ**: `{exe_dir}/icons/*.png`
 - **設定**: `{exe_dir}/settings.json`
 - **検索履歴**: `localStorage` (WebView2内)
 
+初回起動時に旧 `%APPDATA%\com.launcher.app\` からDBとアイコンを自動マイグレーション。
+
 ## アイテムタイプ (item_type)
 
-DBの `apps` テーブルは3種類のアイテムを格納:
+DBの `apps` テーブルは4種類のアイテムを格納:
 - `"app"` — 通常のアプリ (.exe/.lnk)。`get_all_apps` / `get_excluded_apps` で取得
 - `"file"` — ドロップ登録されたファイル。`get_items_by_type("file")` で取得
 - `"folder"` — ドロップ登録されたフォルダ。`get_items_by_type("folder")` で取得
+- `"command"` — 登録済みシェルコマンド。`exe_path` に `cmd://<uuid>|<json>` 形式でデータを格納
 
-**重要**: `get_all_apps` / `get_excluded_apps` のSQLには `item_type = 'app' OR item_type IS NULL` フィルターが必要。これがないとファイル/フォルダがアプリ一覧に混入する。
+**重要**: `get_all_apps` のSQLフィルターは `item_type = 'app' OR item_type = 'command' OR item_type IS NULL`。`"file"` / `"folder"` は除外、`"command"` は含める。
+
+## コマンドアイテム
+
+設定の「コマンド」タブから登録するシェルスクリプトアイテム:
+- `exe_path` = `cmd://<uuid>|{"cmd":"...","admin":bool,"keep_open":bool}` (UNIQUE制約をuuidで回避)
+- 起動時: 一時 `.bat` ファイル (`%TEMP%\nanogram_cmd_<uuid>.bat`) に書き出して実行
+  - `keep_open: true` → bat末尾に `pause` を追加してウィンドウを保持
+  - `admin: true` → `ShellExecuteW(runas, <bat>)` でUAC昇格
+  - 通常 → `cmd /C start "" cmd /C <bat>` でデタッチ起動
+- 検索対象に含まれる (ランチャー検索で名前が一致すると表示される)
+- `ResultItem.tsx` でアイコンをターミナルSVGで表示、`displayPath` で最初の行を抜粋表示
 
 ## 楽観的更新 (Optimistic Update)
 
@@ -145,6 +168,24 @@ DBの `apps` テーブルは3種類のアイテムを格納:
 - `pinnedApps`: 該当アプリの統計を更新
 
 これにより、次回ランチャー表示時に最新の「最近使った」「よく使う」が即座に反映される。
+
+`FolderManager` のフォルダ追加も楽観的更新: `add_folder` が返す `result.folder` を即時 `setFolders` に追加。Tauriネイティブダイアログ後のWebView2非同期コンテキストでは `loadFolders()` の `setFolders` がre-renderをトリガーしないことがあるため。
+
+## 右クリックメニュー
+
+- **通常右クリック**: タグ編集 / 固定 / 除外 (+ フォルダアイテムはエクスプローラー/ターミナルで開く)
+- **Ctrl+右クリック**: 上記に加え「🛡 管理者として実行」を最上部に表示 (app/file のみ)
+  - `launch_app_as_admin` → `ShellExecuteW(runas, exe_path)`
+  - `.lnk` はリンク先exeを解決してから `runas` 適用
+  - 対象: 検索結果 (`ResultItem`) / 固定・最近・よく使う (`RecentStrip`) 全セクション
+- メニュー位置は `useLayoutEffect` でペイント前にビューポートはみ出しを補正 (右端/下端で反転)
+
+## 自動起動 (Autostart)
+
+`tauri-plugin-autostart` を使用。設定変更時と起動時の両方で同期:
+- 設定変更 (`update_settings`) → `apply_autostart(app, bool)` → `mgr.enable()` / `mgr.disable()`
+- 起動時にも `apply_autostart` を呼び、EXEパスが変わっていてもレジストリエントリを更新
+  - Dropbox経由で別PCにコピーした際のパス変更に対応
 
 ## 注意点
 
@@ -158,3 +199,4 @@ DBの `apps` テーブルは3種類のアイテムを格納:
 - マルチモニター環境: `GetDpiForMonitor` でターゲットモニターのDPIを取得し物理座標を計算
 - `AppState.window_logical_size` に論理サイズを保持し、モニター間移動時のDPI変換に使用
 - capabilities (`src-tauri/capabilities/default.json`) に `allow-create`, `allow-set-size`, `allow-emit`, `allow-listen` 等の権限が必要
+- ネイティブダイアログ後のWebView2非同期コンテキストでは `setFolders` 等のstate更新がre-renderをトリガーしないことがある → 楽観的更新で回避

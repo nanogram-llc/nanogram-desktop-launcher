@@ -12,6 +12,10 @@ export async function launchApp(appId: string): Promise<void> {
   return invoke("launch_app", { appId });
 }
 
+export async function launchAppAsAdmin(appId: string): Promise<void> {
+  return invoke("launch_app_as_admin", { appId });
+}
+
 export async function deleteApp(appId: string): Promise<void> {
   return invoke("delete_app", { appId });
 }
@@ -133,4 +137,38 @@ export async function openSettingsFile(): Promise<void> {
 
 export async function getExeDir(): Promise<string> {
   return invoke("get_exe_dir");
+}
+
+// ── Command items ──
+
+export interface CommandData {
+  cmd: string;
+  admin: boolean;
+  keep_open: boolean;
+}
+
+export async function registerCommand(
+  name: string,
+  cmd: string,
+  admin: boolean,
+  keepOpen: boolean
+): Promise<string> {
+  return invoke("register_command", { name, cmd, admin, keepOpen });
+}
+
+export async function updateCommand(
+  appId: string,
+  cmd: string,
+  admin: boolean,
+  keepOpen: boolean
+): Promise<void> {
+  return invoke("update_command", { appId, cmd, admin, keepOpen });
+}
+
+export async function getCommandData(appId: string): Promise<CommandData> {
+  return invoke("get_command_data", { appId });
+}
+
+export async function launchCommand(appId: string): Promise<void> {
+  return invoke("launch_command", { appId });
 }

@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useLayoutEffect } from "react";
 import type { AppEntry } from "../../lib/types";
 import * as api from "../../lib/tauri";
 
@@ -18,6 +18,7 @@ function ResultItem({ app, isSelected, onLaunch, onExclude, onSetTags, onPin, pi
   const isPinnedFull = pinnedIds.filter((id) => id !== "").length >= maxPinned;
   const isAlreadyPinned = pinnedIds.includes(app.id);
   const [menuPos, setMenuPos] = useState<{ x: number; y: number } | null>(null);
+  const [menuCtrl, setMenuCtrl] = useState(false);
   const [editingTags, setEditingTags] = useState(false);
   const [tagInput, setTagInput] = useState("");
   const menuRef = useRef<HTMLDivElement>(null);
@@ -30,8 +31,24 @@ function ResultItem({ app, isSelected, onLaunch, onExclude, onSetTags, onPin, pi
     return () => window.removeEventListener("click", handler);
   }, [menuPos]);
 
+  // Adjust menu position before paint so it never overflows the viewport
+  useLayoutEffect(() => {
+    if (!menuPos || !menuRef.current) return;
+    const el = menuRef.current;
+    const rect = el.getBoundingClientRect();
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    let x = menuPos.x;
+    let y = menuPos.y;
+    if (x + rect.width > vw) x = Math.max(0, x - rect.width);
+    if (y + rect.height > vh) y = Math.max(0, y - rect.height);
+    el.style.left = `${x}px`;
+    el.style.top = `${y}px`;
+  }, [menuPos]);
+
   const handleContextMenu = (e: React.MouseEvent) => {
     e.preventDefault();
+    setMenuCtrl(e.ctrlKey);
     setMenuPos({ x: e.clientX, y: e.clientY });
   };
 
@@ -43,6 +60,27 @@ function ResultItem({ app, isSelected, onLaunch, onExclude, onSetTags, onPin, pi
     onSetTags(app, tags);
     setEditingTags(false);
   };
+
+  const isCommand = app.item_type === "command";
+
+  // For command items, the exe_path field stores an encoded JSON blob —
+  // extract the first line of the actual command for display.
+  const displayPath = (() => {
+    if (!isCommand) return app.exe_path;
+    const match = app.exe_path.match(/^cmd:\/\/[^|]+\|(.+)$/);
+    if (!match) return "(command)";
+    try {
+      const data = JSON.parse(match[1]);
+      const firstLine = String(data.cmd || "")
+        .split("\n")
+        .map((l: string) => l.trim())
+        .find((l: string) => l.length > 0);
+      const prefix = data.admin ? "⚡ " : "";
+      return prefix + (firstLine ? `${firstLine} …` : "(command)");
+    } catch {
+      return "(command)";
+    }
+  })();
 
   return (
     <div
@@ -62,6 +100,12 @@ function ResultItem({ app, isSelected, onLaunch, onExclude, onSetTags, onPin, pi
             alt=""
             className="w-8 h-8 rounded-md shrink-0"
           />
+        ) : isCommand ? (
+          <div className="w-8 h-8 rounded-md bg-gray-800 dark:bg-gray-700 flex items-center justify-center shrink-0">
+            <svg className="w-4 h-4 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+            </svg>
+          </div>
         ) : (
           <div className="w-8 h-8 rounded-md bg-gray-300 dark:bg-gray-600 flex items-center justify-center shrink-0">
             <svg className="w-4 h-4 text-gray-500 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -73,8 +117,8 @@ function ResultItem({ app, isSelected, onLaunch, onExclude, onSetTags, onPin, pi
           <div className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
             {app.name}
           </div>
-          <div className="text-[10px] text-gray-400 dark:text-gray-500 truncate" title={app.exe_path}>
-            {app.exe_path}
+          <div className="text-[10px] text-gray-400 dark:text-gray-500 truncate" title={displayPath}>
+            {displayPath}
           </div>
           {app.tags.length > 0 && !editingTags && (
             <div className="flex gap-1 mt-0.5">
@@ -132,6 +176,20 @@ function ResultItem({ app, isSelected, onLaunch, onExclude, onSetTags, onPin, pi
           style={{ left: menuPos.x, top: menuPos.y }}
           onClick={(e) => e.stopPropagation()}
         >
+          {menuCtrl && (app.item_type === "app" || app.item_type == null || app.item_type === "file") && (
+            <>
+              <button
+                className="w-full px-3 py-1.5 text-xs text-left text-amber-600 dark:text-amber-400 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors font-medium"
+                onClick={() => {
+                  setMenuPos(null);
+                  api.launchAppAsAdmin(app.id).catch(console.error);
+                }}
+              >
+                🛡 管理者として実行
+              </button>
+              <div className="my-1 border-t border-gray-200 dark:border-gray-700" />
+            </>
+          )}
           <button
             className="w-full px-3 py-1.5 text-xs text-left text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
             onClick={() => {

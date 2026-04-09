@@ -52,7 +52,14 @@ function FolderManager() {
 
     try {
       const result = await api.addFolder(selected as string);
-      await loadFolders();
+      // 楽観的に即時追加（ダイアログ後のWebView2コンテキストでは
+      // loadFolders() の setFolders がre-renderをトリガーしないことがある）
+      setFolders((prev) =>
+        prev.some((f) => f.id === result.folder.id)
+          ? prev
+          : [...prev, result.folder]
+      );
+      loadFolders(); // バックグラウンドでDBと同期
       showToast(`${result.app_count} 件のアプリを登録しました`);
     } catch (e) {
       console.error("Failed to add folder:", e);
@@ -64,7 +71,12 @@ function FolderManager() {
     setAddingStartMenu(label);
     try {
       const result = await api.addFolder(path);
-      await loadFolders();
+      setFolders((prev) =>
+        prev.some((f) => f.id === result.folder.id)
+          ? prev
+          : [...prev, result.folder]
+      );
+      loadFolders();
       showToast(`「${label}」から ${result.app_count} 件のアプリを登録しました`);
     } catch (e) {
       console.error("Failed to add start menu:", e);

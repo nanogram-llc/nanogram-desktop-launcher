@@ -39,8 +39,6 @@ export interface Settings {
   autostart: boolean;
   theme: "system" | "dark" | "light";
   max_results: number;
-  recent_count: number;
-  frequent_count: number;
   file_extensions: string;
   registered_items: RegisteredItem[];
   pinned_items: string[];

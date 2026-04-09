@@ -94,22 +94,46 @@ pub fn run() {
         ))
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .setup(|app| {
-            // Initialize data directories
-            let app_data_dir = app
-                .path()
-                .app_data_dir()
-                .expect("Failed to get app data dir");
-            std::fs::create_dir_all(&app_data_dir).ok();
+            // All data is stored next to the EXE so the app is fully portable.
+            let exe_dir = std::env::current_exe()
+                .unwrap_or_default()
+                .parent()
+                .map(|p| p.to_path_buf())
+                .unwrap_or_else(|| std::path::PathBuf::from("."));
 
-            let icon_cache_dir = app_data_dir.join("icons");
+            let icon_cache_dir = exe_dir.join("icons");
             std::fs::create_dir_all(&icon_cache_dir).ok();
 
-            // Migrate old DB name if present
-            let old_db_path = app_data_dir.join("lancher.db");
-            let db_path = app_data_dir.join("launcher.db");
-            if old_db_path.exists() && !db_path.exists() {
-                let _ = std::fs::rename(&old_db_path, &db_path);
+            let db_path = exe_dir.join("launcher.db");
+
+            // One-time migration: copy DB from old %APPDATA% location if new path is empty.
+            if !db_path.exists() {
+                if let Ok(app_data_dir) = app.path().app_data_dir() {
+                    let candidates = [
+                        app_data_dir.join("launcher.db"),
+                        app_data_dir.join("lancher.db"),
+                    ];
+                    for old in &candidates {
+                        if old.exists() {
+                            let _ = std::fs::copy(old, &db_path);
+                            break;
+                        }
+                    }
+                    // Migrate icons if new icons dir is still empty.
+                    let old_icons = app_data_dir.join("icons");
+                    if old_icons.is_dir() {
+                        if let Ok(entries) = std::fs::read_dir(&old_icons) {
+                            for entry in entries.flatten() {
+                                let dest = icon_cache_dir.join(entry.file_name());
+                                if !dest.exists() {
+                                    let _ = std::fs::copy(entry.path(), dest);
+                                }
+                            }
+                        }
+                    }
+                }
             }
+
             let conn = db::init_db(&db_path).expect("Failed to initialize database");
 
             // Settings JSON path: next to the executable
@@ -125,14 +149,24 @@ pub fn run() {
             init_debug_log(&settings_path);
             dlog("=== App starting ===");
 
+            // Load settings once for use during startup
+            let settings_content = std::fs::read_to_string(&settings_path).unwrap_or_default();
+            let settings_json: serde_json::Value =
+                serde_json::from_str(&settings_content).unwrap_or_default();
+
             // Load initial hotkey from settings
-            let initial_hotkey = {
-                let settings_content = std::fs::read_to_string(&settings_path).unwrap_or_default();
-                serde_json::from_str::<serde_json::Value>(&settings_content)
-                    .ok()
-                    .and_then(|v| v.get("hotkey").and_then(|h| h.as_str().map(String::from)))
-                    .unwrap_or_else(|| "Control".to_string())
-            };
+            let initial_hotkey = settings_json
+                .get("hotkey")
+                .and_then(|h| h.as_str().map(String::from))
+                .unwrap_or_else(|| "Control".to_string());
+
+            // Sync autostart: if enabled, re-register with the current EXE path
+            // (important for portable apps where the path may change across machines).
+            let autostart_enabled = settings_json
+                .get("autostart")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
+            commands::settings::apply_autostart(app.handle(), autostart_enabled);
 
             app.manage(AppState {
                 db: Mutex::new(conn),
@@ -287,7 +321,12 @@ pub fn run() {
             commands::apps::get_items_by_type,
             commands::apps::get_excluded_items_by_type,
             commands::apps::open_item,
+            commands::apps::launch_app_as_admin,
             commands::apps::open_folder_with,
+            commands::apps::register_command,
+            commands::apps::update_command,
+            commands::apps::get_command_data,
+            commands::apps::launch_command,
             commands::folders::add_folder,
             commands::folders::remove_folder,
             commands::folders::get_folders,

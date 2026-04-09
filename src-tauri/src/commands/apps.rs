@@ -695,6 +695,284 @@ pub async fn open_item(state: State<'_, AppState>, app_id: String) -> Result<(),
     Ok(())
 }
 
+// ── Command items (shell scripts registered in the launcher) ──
+
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+pub struct CommandData {
+    /// Raw command text (can be multi-line)
+    pub cmd: String,
+    /// Run with UAC elevation
+    #[serde(default)]
+    pub admin: bool,
+    /// Keep the cmd window open after the script finishes
+    #[serde(default = "default_true")]
+    pub keep_open: bool,
+}
+
+fn default_true() -> bool {
+    true
+}
+
+/// Encode a CommandData as a unique string to store in `exe_path`.
+/// Format: `cmd://<uuid>|<json>` — the uuid ensures UNIQUE constraint
+/// is never violated even if two commands have identical content.
+fn encode_command_exe_path(id: &str, data: &CommandData) -> String {
+    let json = serde_json::to_string(data).unwrap_or_default();
+    format!("cmd://{}|{}", id, json)
+}
+
+/// Decode a command exe_path back into CommandData.
+fn decode_command_exe_path(exe_path: &str) -> Option<CommandData> {
+    let rest = exe_path.strip_prefix("cmd://")?;
+    let (_, json) = rest.split_once('|')?;
+    serde_json::from_str::<CommandData>(json).ok()
+}
+
+/// Register a new command item.
+#[tauri::command]
+pub async fn register_command(
+    state: State<'_, AppState>,
+    name: String,
+    cmd: String,
+    admin: bool,
+    keep_open: bool,
+) -> Result<String, String> {
+    let now = Utc::now().timestamp();
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+
+    ensure_virtual_folder(&conn, "command-registered", "(Registered Commands)", now)?;
+
+    let id = Uuid::new_v4().to_string();
+    let data = CommandData { cmd, admin, keep_open };
+    let exe_path = encode_command_exe_path(&id, &data);
+
+    let entry = AppEntry {
+        id: id.clone(),
+        name,
+        exe_path,
+        folder_id: "command-registered".to_string(),
+        icon_cache_path: None,
+        tags: Vec::new(),
+        launch_count: 0,
+        last_launched: None,
+        is_excluded: false,
+        is_renamed: false,
+        created_at: now,
+        item_type: "command".to_string(),
+        icon_base64: None,
+    };
+
+    queries::insert_app(&conn, &entry).map_err(|e| e.to_string())?;
+    Ok(id)
+}
+
+/// Update an existing command item's data (command text + flags).
+/// Use `rename_app` to change the display name.
+#[tauri::command]
+pub async fn update_command(
+    state: State<'_, AppState>,
+    app_id: String,
+    cmd: String,
+    admin: bool,
+    keep_open: bool,
+) -> Result<(), String> {
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    let data = CommandData { cmd, admin, keep_open };
+    let new_exe_path = encode_command_exe_path(&app_id, &data);
+    conn.execute(
+        "UPDATE apps SET exe_path = ?1 WHERE id = ?2 AND item_type = 'command'",
+        rusqlite::params![new_exe_path, app_id],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// Get command data for editing.
+#[tauri::command]
+pub async fn get_command_data(
+    state: State<'_, AppState>,
+    app_id: String,
+) -> Result<CommandData, String> {
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    let exe_path = queries::get_app_exe_path(&conn, &app_id)
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "Command not found".to_string())?;
+    decode_command_exe_path(&exe_path).ok_or_else(|| "Failed to decode command data".to_string())
+}
+
+/// Launch a command item: writes the stored script to a temp .bat file and runs it.
+#[tauri::command]
+pub async fn launch_command(
+    state: State<'_, AppState>,
+    app_id: String,
+) -> Result<(), String> {
+    let data = {
+        let conn = state.db.lock().map_err(|e| e.to_string())?;
+        let now = Utc::now().timestamp();
+        queries::increment_launch(&conn, &app_id, now).map_err(|e| e.to_string())?;
+        let exe_path = queries::get_app_exe_path(&conn, &app_id)
+            .map_err(|e| e.to_string())?
+            .ok_or_else(|| "Command not found".to_string())?;
+        decode_command_exe_path(&exe_path)
+            .ok_or_else(|| "Failed to decode command data".to_string())?
+    };
+
+    // Collect usable (non-comment, non-empty) lines.
+    let lines: Vec<&str> = data
+        .cmd
+        .lines()
+        .map(|l| l.trim_end_matches('\r'))
+        .filter(|l| {
+            let t = l.trim_start();
+            !t.is_empty() && !t.starts_with("::") && !t.starts_with("REM ")
+        })
+        .collect();
+
+    if lines.is_empty() {
+        return Err("Command is empty".to_string());
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        // Write the commands to a temporary .bat file. This avoids all the
+        // shell-escaping pitfalls of trying to pass a multi-statement string
+        // through `cmd /C start cmd /K "..."`.
+        let bat_path = {
+            let mut p = std::env::temp_dir();
+            p.push(format!("nanogram_cmd_{}.bat", Uuid::new_v4()));
+            p
+        };
+
+        // Use CP932 (Shift-JIS) via chcp? No — just write UTF-8 with BOM-less bytes.
+        // cmd.exe processes .bat files using the OEM codepage, but ASCII commands
+        // (which this feature is mainly for) work fine regardless.
+        let mut body = String::from("@echo off\r\n");
+        for l in &lines {
+            body.push_str(l);
+            body.push_str("\r\n");
+        }
+        if data.keep_open {
+            // Leave the window open after the script finishes so the user
+            // can inspect the output.
+            body.push_str("echo.\r\n");
+            body.push_str("pause\r\n");
+        }
+
+        std::fs::write(&bat_path, body.as_bytes())
+            .map_err(|e| format!("Failed to write temp .bat: {}", e))?;
+
+        let bat_path_str = bat_path.to_string_lossy().into_owned();
+
+        if data.admin {
+            // Elevation: use ShellExecuteW with the "runas" verb pointing
+            // directly at the .bat file (Windows will invoke cmd.exe for us).
+            run_elevated_bat(&bat_path_str)?;
+        } else {
+            // No elevation: detach via `start` so the new cmd window is
+            // independent of the launcher process.
+            std::process::Command::new("cmd")
+                .args(["/C", "start", "", "cmd", "/C", &bat_path_str])
+                .spawn()
+                .map_err(|e| format!("Failed to launch command: {}", e))?;
+        }
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = (lines, data);
+        return Err("Command items are only supported on Windows".to_string());
+    }
+
+    Ok(())
+}
+
+#[cfg(target_os = "windows")]
+fn run_elevated_bat(bat_path: &str) -> Result<(), String> {
+    use windows::core::PCWSTR;
+    use windows::Win32::UI::Shell::ShellExecuteW;
+    use windows::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
+
+    let verb: Vec<u16> = "runas\0".encode_utf16().collect();
+    let file: Vec<u16> = bat_path.encode_utf16().chain(std::iter::once(0)).collect();
+
+    let rc = unsafe {
+        ShellExecuteW(
+            None,
+            PCWSTR(verb.as_ptr()),
+            PCWSTR(file.as_ptr()),
+            PCWSTR::null(),
+            PCWSTR::null(),
+            SW_SHOWNORMAL,
+        )
+    };
+
+    // ShellExecuteW returns HINSTANCE; values <= 32 indicate an error.
+    if rc.0 as isize <= 32 {
+        return Err(format!("ShellExecuteW failed (code {})", rc.0 as isize));
+    }
+    Ok(())
+}
+
+/// Launch an app with administrator privileges (UAC elevation).
+/// Works for .exe and .lnk — resolves shortcut targets first.
+#[tauri::command]
+pub async fn launch_app_as_admin(
+    state: State<'_, AppState>,
+    app_id: String,
+) -> Result<(), String> {
+    let exe_path = {
+        let conn = state.db.lock().map_err(|e| e.to_string())?;
+        let now = Utc::now().timestamp();
+        queries::increment_launch(&conn, &app_id, now).map_err(|e| e.to_string())?;
+        queries::get_app_exe_path(&conn, &app_id)
+            .map_err(|e| e.to_string())?
+            .ok_or_else(|| "App not found".to_string())?
+    };
+
+    #[cfg(target_os = "windows")]
+    {
+        use windows::core::PCWSTR;
+        use windows::Win32::UI::Shell::ShellExecuteW;
+        use windows::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
+
+        // Resolve .lnk shortcut to its actual target exe
+        let target = {
+            let p = std::path::Path::new(&exe_path);
+            let ext = p.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
+            if ext == "lnk" {
+                crate::scanner::resolve_single_lnk(p)
+                    .map(|a| a.exe_path)
+                    .unwrap_or(exe_path)
+            } else {
+                exe_path
+            }
+        };
+
+        let verb: Vec<u16> = "runas\0".encode_utf16().collect();
+        let file: Vec<u16> = target.encode_utf16().chain(std::iter::once(0)).collect();
+
+        let rc = unsafe {
+            ShellExecuteW(
+                None,
+                PCWSTR(verb.as_ptr()),
+                PCWSTR(file.as_ptr()),
+                PCWSTR::null(),
+                PCWSTR::null(),
+                SW_SHOWNORMAL,
+            )
+        };
+
+        if rc.0 as isize <= 32 {
+            return Err(format!("ShellExecuteW failed (code {})", rc.0 as isize));
+        }
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    return Err("Admin launch is only supported on Windows".to_string());
+
+    Ok(())
+}
+
 /// Open folder with a specific program.
 #[tauri::command]
 pub async fn open_folder_with(

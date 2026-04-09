@@ -6,6 +6,7 @@ use crate::AppState;
 use chrono::Utc;
 use std::path::Path;
 use tauri::State;
+use tauri_plugin_autostart::ManagerExt;
 use uuid::Uuid;
 
 #[tauri::command]
@@ -35,7 +36,24 @@ pub async fn update_settings(
         hotkey::apply_hotkey(&app, &settings.hotkey)?;
     }
 
+    // Apply autostart (Windows registry / macOS LaunchAgent)
+    apply_autostart(&app, settings.autostart);
+
     save_settings_to_file(&state.settings_path, &settings)
+}
+
+/// Enable or disable OS-level autostart.
+pub fn apply_autostart(app: &tauri::AppHandle, enable: bool) {
+    let mgr = app.autolaunch();
+    if enable {
+        if let Err(e) = mgr.enable() {
+            eprintln!("autostart enable failed: {}", e);
+        }
+    } else {
+        if let Err(e) = mgr.disable() {
+            eprintln!("autostart disable failed: {}", e);
+        }
+    }
 }
 
 #[tauri::command]

@@ -63,8 +63,6 @@ function GeneralSettings({ onThemeChange }: GeneralSettingsProps) {
     autostart: false,
     theme: "system",
     max_results: 8,
-    recent_count: 8,
-    frequent_count: 8,
     file_extensions: "txt,json,md,csv,html,xml,pdf,docx,xlsx,pptx,doc,xls,ppt",
     registered_items: [],
     pinned_items: [],
@@ -198,36 +196,6 @@ function GeneralSettings({ onThemeChange }: GeneralSettingsProps) {
             max={20}
             value={settings.max_results}
             onChange={(e) => update({ max_results: parseInt(e.target.value) })}
-            className="w-full accent-blue-500"
-          />
-        </div>
-
-        {/* Recent Count */}
-        <div>
-          <div className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-            最近使った 表示数: {settings.recent_count}
-          </div>
-          <input
-            type="range"
-            min={0}
-            max={20}
-            value={settings.recent_count}
-            onChange={(e) => update({ recent_count: parseInt(e.target.value) })}
-            className="w-full accent-blue-500"
-          />
-        </div>
-
-        {/* Frequent Count */}
-        <div>
-          <div className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-            よく使う 表示数: {settings.frequent_count}
-          </div>
-          <input
-            type="range"
-            min={0}
-            max={20}
-            value={settings.frequent_count}
-            onChange={(e) => update({ frequent_count: parseInt(e.target.value) })}
             className="w-full accent-blue-500"
           />
         </div>

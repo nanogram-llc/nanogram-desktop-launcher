@@ -1,5 +1,6 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useLayoutEffect, useRef, useCallback } from "react";
 import type { AppEntry, SectionConfig } from "../../lib/types";
+import * as api from "../../lib/tauri";
 
 const ITEM_SIZE = 64; // px per item (w-16)
 
@@ -74,7 +75,7 @@ function RecentStrip({
   onUnpin,
   onReorderPinned,
 }: RecentStripProps) {
-  const [menuState, setMenuState] = useState<{ x: number; y: number; app: AppEntry; isPinned: boolean } | null>(null);
+  const [menuState, setMenuState] = useState<{ x: number; y: number; app: AppEntry; isPinned: boolean; ctrlKey: boolean } | null>(null);
   const [editingTags, setEditingTags] = useState<AppEntry | null>(null);
   const [tagInput, setTagInput] = useState("");
   const menuRef = useRef<HTMLDivElement>(null);
@@ -182,10 +183,25 @@ function RecentStrip({
     return () => window.removeEventListener("click", handler);
   }, [menuState]);
 
+  // Adjust menu position before paint so it never overflows the viewport
+  useLayoutEffect(() => {
+    if (!menuState || !menuRef.current) return;
+    const el = menuRef.current;
+    const rect = el.getBoundingClientRect();
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    let x = menuState.x;
+    let y = menuState.y;
+    if (x + rect.width > vw) x = Math.max(0, x - rect.width);
+    if (y + rect.height > vh) y = Math.max(0, y - rect.height);
+    el.style.left = `${x}px`;
+    el.style.top = `${y}px`;
+  }, [menuState]);
+
   const handleContextMenu = (e: React.MouseEvent, app: AppEntry, isPinned: boolean) => {
     e.preventDefault();
     e.stopPropagation();
-    setMenuState({ x: e.clientX, y: e.clientY, app, isPinned });
+    setMenuState({ x: e.clientX, y: e.clientY, app, isPinned, ctrlKey: e.ctrlKey });
   };
 
   const handleSaveTags = () => {
@@ -353,6 +369,21 @@ function RecentStrip({
           <div className="px-3 py-1 text-[10px] text-gray-400 dark:text-gray-500 truncate border-b border-gray-100 dark:border-gray-700">
             {menuState.app.name}
           </div>
+          {menuState.ctrlKey && (menuState.app.item_type === "app" || menuState.app.item_type == null || menuState.app.item_type === "file") && (
+            <>
+              <button
+                className="w-full px-3 py-1.5 text-xs text-left text-amber-600 dark:text-amber-400 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors font-medium"
+                onClick={() => {
+                  const app = menuState.app;
+                  setMenuState(null);
+                  api.launchAppAsAdmin(app.id).catch(console.error);
+                }}
+              >
+                🛡 管理者として実行
+              </button>
+              <div className="my-1 border-t border-gray-200 dark:border-gray-700" />
+            </>
+          )}
           <button
             className="w-full px-3 py-1.5 text-xs text-left text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
             onClick={() => {

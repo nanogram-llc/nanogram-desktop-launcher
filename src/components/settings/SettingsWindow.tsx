@@ -3,12 +3,19 @@ import GeneralSettings from "./GeneralSettings";
 import FolderManager from "./FolderManager";
 import AppTable from "./AppTable";
 import ItemTable from "./ItemTable";
+import CommandManager from "./CommandManager";
 
 interface SettingsWindowProps {
   onThemeChange: (theme: string) => void;
 }
 
-type Tab = "general" | "folders" | "apps" | "files" | "registered_folders";
+type Tab =
+  | "general"
+  | "folders"
+  | "apps"
+  | "files"
+  | "registered_folders"
+  | "commands";
 
 function SettingsWindow({ onThemeChange }: SettingsWindowProps) {
   const [tab, setTab] = useState<Tab>("general");
@@ -19,6 +26,7 @@ function SettingsWindow({ onThemeChange }: SettingsWindowProps) {
     { id: "apps", label: "アプリ" },
     { id: "files", label: "ファイル" },
     { id: "registered_folders", label: "フォルダ" },
+    { id: "commands", label: "コマンド" },
   ];
 
   return (
@@ -48,6 +56,7 @@ function SettingsWindow({ onThemeChange }: SettingsWindowProps) {
           {tab === "apps" && <AppTable />}
           {tab === "files" && <ItemTable itemType="file" label="ファイル" dropHint="ファイルをドロップして登録" />}
           {tab === "registered_folders" && <ItemTable itemType="folder" label="フォルダ" dropHint="フォルダをドロップして登録" />}
+          {tab === "commands" && <CommandManager />}
         </div>
       </div>
     </div>

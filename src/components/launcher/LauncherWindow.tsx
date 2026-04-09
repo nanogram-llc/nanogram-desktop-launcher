@@ -20,8 +20,6 @@ function LauncherWindow() {
   const [dragOver, setDragOver] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [maxResults, setMaxResults] = useState(8);
-  const [recentCount, setRecentCount] = useState(8);
-  const [frequentCount, setFrequentCount] = useState(8);
   const [sections, setSections] = useState<SectionConfig[]>([
     { id: "recent", visible: true },
     { id: "frequent", visible: true },
@@ -62,8 +60,6 @@ function LauncherWindow() {
   const applySettings = useCallback((s: Settings) => {
     settingsRef.current = s;
     setMaxResults(s.max_results);
-    setRecentCount(s.recent_count);
-    setFrequentCount(s.frequent_count);
     setPinnedIds(s.pinned_items || []);
     const secs = (s.sections && s.sections.length > 0) ? s.sections : sections;
     setSections(secs);
@@ -80,17 +76,17 @@ function LauncherWindow() {
     api.resizeWindow(cols, totalRows, sectionCount).catch(console.error);
   }, []);
 
-  const loadRecentFrequent = useCallback(async (rCount: number, fCount: number, pIds: string[]) => {
+  const loadRecentFrequent = useCallback(async (cols: number, pIds: string[]) => {
     try {
       const apps = await api.getApps(null, 100);
       const recent = apps
         .filter((a) => a.last_launched)
         .sort((a, b) => (b.last_launched ?? 0) - (a.last_launched ?? 0))
-        .slice(0, rCount);
+        .slice(0, cols);
       const frequent = apps
         .filter((a) => a.launch_count > 0)
         .sort((a, b) => b.launch_count - a.launch_count)
-        .slice(0, fCount);
+        .slice(0, cols);
 
       const appMap = new Map(apps.map((a) => [a.id, a]));
       const pinned = pIds.map((id) => appMap.get(id)).filter((a): a is AppEntry => !!a);
@@ -108,9 +104,9 @@ function LauncherWindow() {
     const loadAll = () => {
       api.getSettings().then((s) => {
         applySettings(s);
-        loadRecentFrequent(s.recent_count, s.frequent_count, s.pinned_items || []);
+        loadRecentFrequent(s.pinned_columns || 9, s.pinned_items || []);
       }).catch(() => {
-        loadRecentFrequent(recentCount, frequentCount, pinnedIds);
+        loadRecentFrequent(pinnedColumns, pinnedIds);
       });
     };
     loadAll();
@@ -125,7 +121,7 @@ function LauncherWindow() {
     const unlisten = listen<Settings>("settings-changed", (event) => {
       const s = event.payload;
       applySettings(s);
-      loadRecentFrequent(s.recent_count, s.frequent_count, s.pinned_items || []);
+      loadRecentFrequent(s.pinned_columns || 9, s.pinned_items || []);
     });
     return () => {
       unlisten.then((fn) => fn());
@@ -181,7 +177,7 @@ function LauncherWindow() {
 
         if (totalCount > 0) {
           showToast(`${msgs.join("、")} を登録しました`);
-          loadRecentFrequent(recentCount, frequentCount, pinnedIds);
+          loadRecentFrequent(pinnedColumns, pinnedIds);
         } else {
           showToast("新規の登録対象はありませんでした");
         }
@@ -215,6 +211,8 @@ function LauncherWindow() {
     try {
       if (app.item_type === "file" || app.item_type === "folder") {
         await api.openItem(app.id);
+      } else if (app.item_type === "command") {
+        await api.launchCommand(app.id);
       } else {
         await api.launchApp(app.id);
       }
@@ -225,13 +223,13 @@ function LauncherWindow() {
 
       setRecentApps((prev) => {
         const filtered = prev.filter((a) => a.id !== app.id);
-        return [updated, ...filtered].slice(0, recentCount);
+        return [updated, ...filtered].slice(0, pinnedColumns);
       });
       setFrequentApps((prev) => {
         const filtered = prev.filter((a) => a.id !== app.id);
         return [updated, ...filtered]
           .sort((a, b) => b.launch_count - a.launch_count)
-          .slice(0, frequentCount);
+          .slice(0, pinnedColumns);
       });
       setPinnedApps((prev) =>
         prev.map((a) => (a.id === app.id ? updated : a))
@@ -246,7 +244,7 @@ function LauncherWindow() {
     } catch (e) {
       console.error("Failed to launch app:", e);
     }
-  }, [query, addToHistory, recentCount, frequentCount]);
+  }, [query, addToHistory, pinnedColumns]);
 
   const savePinnedItems = useCallback(async (newIds: string[]) => {
     try {
