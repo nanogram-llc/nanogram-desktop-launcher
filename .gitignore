@@ -35,3 +35,7 @@ launcher.db-journal
 
 # Built executable (keep out of repo; produced by `tauri build`)
 nanogramLauncher.exe
+nanogram desktop LauncheR.exe
+# Portable runtime data that may land next to the EXE
+source.txt
+debug.log
