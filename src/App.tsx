@@ -1,8 +1,10 @@
 import { useState, useEffect, useCallback } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { listen } from "@tauri-apps/api/event";
 import LauncherWindow from "./components/launcher/LauncherWindow";
 import SettingsWindow from "./components/settings/SettingsWindow";
 import * as api from "./lib/tauri";
+import type { Settings } from "./lib/types";
 
 function applyThemeClass(theme: string) {
   const root = document.documentElement;
@@ -52,7 +54,19 @@ function App() {
   const handleThemeChange = useCallback((newTheme: string) => {
     setTheme(newTheme);
     applyThemeClass(newTheme);
+    // Mica/Acrylic の角が正しいテーマで表示されるよう再適用
+    const isDark = newTheme === "dark"
+      || (newTheme === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+    api.setVibracyTheme(isDark).catch(() => {});
   }, []);
+
+  // ランチャーウィンドウ側でもテーマ変更を受け取る
+  useEffect(() => {
+    const unlisten = listen<Settings>("settings-changed", (event) => {
+      handleThemeChange(event.payload.theme ?? "system");
+    });
+    return () => { unlisten.then((fn) => fn()); };
+  }, [handleThemeChange]);
 
   if (windowLabel === null) return null;
 

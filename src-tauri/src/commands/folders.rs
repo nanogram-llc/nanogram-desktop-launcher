@@ -26,7 +26,7 @@ pub async fn add_folder(
     };
 
     {
-        let conn = state.db.lock().map_err(|e| e.to_string())?;
+        let conn = state.lock_db()?;
         queries::insert_folder(&conn, &folder).map_err(|e| e.to_string())?;
     }
 
@@ -39,13 +39,13 @@ pub async fn add_folder(
 
 #[tauri::command]
 pub async fn remove_folder(state: State<'_, AppState>, folder_id: String) -> Result<(), String> {
-    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    let conn = state.lock_db()?;
     queries::delete_folder(&conn, &folder_id).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub async fn get_folders(state: State<'_, AppState>) -> Result<Vec<Folder>, String> {
-    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    let conn = state.lock_db()?;
     queries::get_folders(&conn).map_err(|e| e.to_string())
 }
 
@@ -56,7 +56,7 @@ pub async fn rescan_folder(
     mode: ScanMode,
 ) -> Result<Vec<crate::db::models::AppEntry>, String> {
     let folder_path = {
-        let conn = state.db.lock().map_err(|e| e.to_string())?;
+        let conn = state.lock_db()?;
         queries::get_folder_by_id(&conn, &folder_id)
             .map_err(|e| e.to_string())?
             .ok_or_else(|| "Folder not found".to_string())?

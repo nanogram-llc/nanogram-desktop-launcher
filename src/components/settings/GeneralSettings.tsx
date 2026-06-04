@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { emit } from "@tauri-apps/api/event";
+import { emit, listen } from "@tauri-apps/api/event";
 import type { Settings, SectionConfig, SectionId } from "../../lib/types";
 import * as api from "../../lib/tauri";
 
@@ -57,6 +57,30 @@ function shortcutLabel(hotkey: string): string {
     .replace("Return", "Enter");
 }
 
+/**
+ * 列数/行数変更時に pinned_items を2次元座標で再マッピングする。
+ * 各アイテムの (row, col) 位置を保持し、新しいサイズに収まらない
+ * スロット（col >= newCols または row >= newRows）は空文字に落とす。
+ * これにより行をまたぐ位置ジャンプを防ぐ。
+ */
+function remapPinnedItems(
+  items: string[],
+  oldCols: number,
+  oldRows: number,
+  newCols: number,
+  newRows: number,
+): string[] {
+  const result: string[] = [];
+  for (let r = 0; r < newRows; r++) {
+    for (let c = 0; c < newCols; c++) {
+      const id =
+        r < oldRows && c < oldCols ? (items[r * oldCols + c] ?? "") : "";
+      result.push(id);
+    }
+  }
+  return result;
+}
+
 function GeneralSettings({ onThemeChange }: GeneralSettingsProps) {
   const [settings, setSettings] = useState<Settings>({
     hotkey: "Control",
@@ -70,10 +94,26 @@ function GeneralSettings({ onThemeChange }: GeneralSettingsProps) {
     pinned_columns: 9,
     pinned_rows: 2,
     debug_log: false,
+    show_evac_button: false,
   });
   const [loaded, setLoaded] = useState(false);
   const [recording, setRecording] = useState(false);
+  const [regenStatus, setRegenStatus] = useState<string | null>(null);
+  const [evacuated, setEvacuated] = useState(false);
+  const [evacStatus, setEvacStatus] = useState<string | null>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const handleRegenAllIcons = useCallback(async () => {
+    setRegenStatus("再生成中...");
+    try {
+      const n = await api.regenerateAllIcons();
+      setRegenStatus(`${n} 件のアイコンを再生成しました`);
+    } catch (e) {
+      setRegenStatus("再生成に失敗しました");
+      console.error("regenerateAllIcons failed:", e);
+    }
+    setTimeout(() => setRegenStatus(null), 4000);
+  }, []);
 
   const isComboMode = settings.hotkey.includes("+");
 
@@ -87,12 +127,59 @@ function GeneralSettings({ onThemeChange }: GeneralSettingsProps) {
     }).catch(() => setLoaded(true));
   }, []);
 
+  // Evacuation status (machine-local) — fetch on mount, keep in sync.
+  useEffect(() => {
+    api.getEvacStatus().then((s) => setEvacuated(s.evacuated)).catch(() => {});
+    const unlisten = listen<{ evacuated: boolean }>("evac-changed", (e) => {
+      setEvacuated(e.payload.evacuated);
+    });
+    return () => { unlisten.then((fn) => fn()); };
+  }, []);
+
+  const flashEvac = useCallback((msg: string) => {
+    setEvacStatus(msg);
+    setTimeout(() => setEvacStatus(null), 4000);
+  }, []);
+
+  const handleEvacuate = useCallback(async () => {
+    try {
+      const s = await api.evacuate();
+      setEvacuated(s.evacuated);
+      flashEvac("DBをローカルに退避しました");
+    } catch (e) {
+      flashEvac(`退避に失敗: ${e}`);
+    }
+  }, [flashEvac]);
+
+  const handleMerge = useCallback(async () => {
+    try {
+      const r = await api.mergeEvacuation();
+      setEvacuated(false);
+      flashEvac(
+        r.strategy === "overwrite"
+          ? "Dropboxへ反映しました（上書き）"
+          : `Dropboxへマージ（追加 ${r.apps_added} / 更新 ${r.apps_updated} / フォルダ ${r.folders_added}）`
+      );
+    } catch (e) {
+      flashEvac(`マージに失敗: ${e}`);
+    }
+  }, [flashEvac]);
+
+  const handleDiscard = useCallback(async () => {
+    try {
+      const s = await api.discardEvacuation();
+      setEvacuated(s.evacuated);
+      flashEvac("退避を破棄しました");
+    } catch (e) {
+      flashEvac(`破棄に失敗: ${e}`);
+    }
+  }, [flashEvac]);
+
   const autoSave = useCallback((newSettings: Settings) => {
+    emit("settings-changed", newSettings).catch(console.error);
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => {
-      api.updateSettings(newSettings).then(() => {
-        emit("settings-changed", newSettings).catch(console.error);
-      }).catch((e) =>
+      api.updateSettings(newSettings).catch((e) =>
         console.error("Failed to save settings:", e)
       );
     }, 300);
@@ -210,7 +297,20 @@ function GeneralSettings({ onThemeChange }: GeneralSettingsProps) {
             min={5}
             max={15}
             value={settings.pinned_columns}
-            onChange={(e) => update({ pinned_columns: parseInt(e.target.value) })}
+            onChange={(e) => {
+              const newCols = parseInt(e.target.value);
+              const newItems = remapPinnedItems(
+                settings.pinned_items,
+                settings.pinned_columns,
+                settings.pinned_rows,
+                newCols,
+                settings.pinned_rows,
+              );
+              const patch = { pinned_columns: newCols, pinned_items: newItems };
+              update(patch);
+              // ウィンドウが閉じる前にdebounceが発火しない場合に備えて即座にディスク保存
+              api.updateSettings({ ...settings, ...patch }).catch(console.error);
+            }}
             className="w-full accent-blue-500"
           />
         </div>
@@ -225,7 +325,20 @@ function GeneralSettings({ onThemeChange }: GeneralSettingsProps) {
             min={1}
             max={5}
             value={settings.pinned_rows}
-            onChange={(e) => update({ pinned_rows: parseInt(e.target.value) })}
+            onChange={(e) => {
+              const newRows = parseInt(e.target.value);
+              const newItems = remapPinnedItems(
+                settings.pinned_items,
+                settings.pinned_columns,
+                settings.pinned_rows,
+                settings.pinned_columns,
+                newRows,
+              );
+              const patch = { pinned_rows: newRows, pinned_items: newItems };
+              update(patch);
+              // ウィンドウが閉じる前にdebounceが発火しない場合に備えて即座にディスク保存
+              api.updateSettings({ ...settings, ...patch }).catch(console.error);
+            }}
             className="w-full accent-blue-500"
           />
         </div>
@@ -404,6 +517,97 @@ function GeneralSettings({ onThemeChange }: GeneralSettingsProps) {
             </div>
           )}
         </div>
+      </div>
+
+      {/* Maintenance */}
+      <div className="border-t border-gray-200 dark:border-gray-700 pt-4 space-y-2">
+        <div className="text-sm font-medium text-gray-700 dark:text-gray-300">メンテナンス</div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleRegenAllIcons}
+            disabled={regenStatus === "再生成中..."}
+            className="px-3 py-1.5 text-xs font-medium bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors disabled:opacity-50"
+          >
+            アイコンを再生成
+          </button>
+          {regenStatus && (
+            <span className="text-xs text-gray-500 dark:text-gray-400">{regenStatus}</span>
+          )}
+        </div>
+        <div className="text-[10px] text-gray-400 dark:text-gray-500">
+          欠けているアイコンや古いアイコンを最新の抽出ロジックで再取得します（数十秒かかる場合あり）
+        </div>
+      </div>
+
+      {/* DB evacuation mode */}
+      <div className="border-t border-gray-200 dark:border-gray-700 pt-4 space-y-3">
+        <div>
+          <div className="text-sm font-medium text-gray-700 dark:text-gray-300">DB退避モード</div>
+          <div className="text-[11px] text-gray-500 dark:text-gray-400 mt-1 leading-relaxed">
+            DB をEXE隣（Dropbox同期フォルダ）からローカルに退避し、同期の競合（つっかえ）を防ぎます。
+            退避中はローカルDBを参照し、Dropbox側は触らないので同期が完了します。
+            作業後「マージ実行」で変更をDropboxへ戻し、退避を解除します（Dropbox側が他PCで更新されていた場合は自動で統合）。
+            「破棄」はローカルの変更を捨てて退避を解除します。
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <span
+            className={`px-2 py-0.5 rounded-full text-[11px] font-medium ${
+              evacuated
+                ? "bg-amber-500/15 text-amber-600 dark:text-amber-400"
+                : "bg-gray-200 dark:bg-gray-700 text-gray-500 dark:text-gray-400"
+            }`}
+          >
+            {evacuated ? "退避中（ローカルDB）" : "通常（Dropbox DB）"}
+          </span>
+          {!evacuated ? (
+            <button
+              onClick={handleEvacuate}
+              className="px-3 py-1.5 text-xs font-medium bg-amber-500/90 text-white rounded-lg hover:bg-amber-500 transition-colors"
+            >
+              ローカルに退避
+            </button>
+          ) : (
+            <>
+              <button
+                onClick={handleMerge}
+                className="px-3 py-1.5 text-xs font-medium bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
+              >
+                マージ実行
+              </button>
+              <button
+                onClick={handleDiscard}
+                className="px-3 py-1.5 text-xs font-medium bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-red-500/10 hover:text-red-500 transition-colors"
+              >
+                破棄
+              </button>
+            </>
+          )}
+          {evacStatus && (
+            <span className="text-xs text-gray-500 dark:text-gray-400">{evacStatus}</span>
+          )}
+        </div>
+
+        {/* Show controls on the main launcher window */}
+        <label className="flex items-center justify-between pt-1">
+          <div>
+            <div className="text-sm font-medium text-gray-700 dark:text-gray-300">退避操作をメイン画面に表示</div>
+            <div className="text-xs text-gray-500 dark:text-gray-400">ランチャー右上の設定ボタン左に退避ボタンを表示</div>
+          </div>
+          <button
+            onClick={() => update({ show_evac_button: !settings.show_evac_button })}
+            className={`relative w-11 h-6 rounded-full transition-colors ${
+              settings.show_evac_button ? "bg-blue-500" : "bg-gray-300 dark:bg-gray-600"
+            }`}
+          >
+            <span
+              className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-transform shadow ${
+                settings.show_evac_button ? "translate-x-5" : ""
+              }`}
+            />
+          </button>
+        </label>
       </div>
 
       <div className="flex items-center justify-between">

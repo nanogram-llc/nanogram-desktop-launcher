@@ -46,7 +46,7 @@ NANOGRAM Launcher は、Windows 向けのキーボード中心の軽量アプリ
 
 ### 起動
 
-`nanogramLauncher.exe` を実行するとシステムトレイに常駐します。初回起動時に `settings.json` が自動生成されます。
+`nanogram desktop LauncheR.exe` を実行するとシステムトレイに常駐します。初回起動時に `settings.json` が自動生成されます。
 
 ### 終了
 

@@ -15,7 +15,7 @@ pub async fn get_apps(
     limit: u32,
 ) -> Result<Vec<AppEntry>, String> {
     let mut apps = {
-        let conn = state.db.lock().map_err(|e| e.to_string())?;
+        let conn = state.lock_db()?;
         queries::get_all_apps(&conn).map_err(|e| e.to_string())?
     };
 
@@ -120,7 +120,7 @@ fn is_subsequence(needle: &str, haystack: &str) -> bool {
 #[tauri::command]
 pub async fn launch_app(state: State<'_, AppState>, app_id: String) -> Result<(), String> {
     let exe_path = {
-        let conn = state.db.lock().map_err(|e| e.to_string())?;
+        let conn = state.lock_db()?;
         let now = Utc::now().timestamp();
         queries::increment_launch(&conn, &app_id, now).map_err(|e| e.to_string())?;
         queries::get_app_exe_path(&conn, &app_id)
@@ -333,7 +333,7 @@ fn bring_process_to_front(exe_name: &str) {
 
 #[tauri::command]
 pub async fn delete_app(state: State<'_, AppState>, app_id: String) -> Result<(), String> {
-    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    let conn = state.lock_db()?;
     queries::delete_app(&conn, &app_id).map_err(|e| e.to_string())
 }
 
@@ -343,7 +343,7 @@ pub async fn rename_app(
     app_id: String,
     new_name: String,
 ) -> Result<(), String> {
-    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    let conn = state.lock_db()?;
     queries::rename_app(&conn, &app_id, &new_name).map_err(|e| e.to_string())
 }
 
@@ -353,26 +353,26 @@ pub async fn set_tags(
     app_id: String,
     tags: Vec<String>,
 ) -> Result<(), String> {
-    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    let conn = state.lock_db()?;
     queries::set_tags(&conn, &app_id, &tags).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub async fn exclude_app(state: State<'_, AppState>, app_id: String) -> Result<(), String> {
-    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    let conn = state.lock_db()?;
     queries::set_excluded(&conn, &app_id, true).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub async fn include_app(state: State<'_, AppState>, app_id: String) -> Result<(), String> {
-    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    let conn = state.lock_db()?;
     queries::set_excluded(&conn, &app_id, false).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub async fn get_excluded_apps(state: State<'_, AppState>) -> Result<Vec<AppEntry>, String> {
     let mut result = {
-        let conn = state.db.lock().map_err(|e| e.to_string())?;
+        let conn = state.lock_db()?;
         queries::get_excluded_apps(&conn).map_err(|e| e.to_string())?
     };
 
@@ -399,7 +399,7 @@ pub async fn bulk_exclude_apps(
     state: State<'_, AppState>,
     app_ids: Vec<String>,
 ) -> Result<(), String> {
-    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    let conn = state.lock_db()?;
     queries::bulk_set_excluded(&conn, &app_ids, true).map_err(|e| e.to_string())
 }
 
@@ -408,7 +408,7 @@ pub async fn bulk_include_apps(
     state: State<'_, AppState>,
     app_ids: Vec<String>,
 ) -> Result<(), String> {
-    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    let conn = state.lock_db()?;
     queries::bulk_set_excluded(&conn, &app_ids, false).map_err(|e| e.to_string())
 }
 
@@ -438,7 +438,7 @@ fn ensure_virtual_folder(
 #[tauri::command]
 pub async fn register_files(state: State<'_, AppState>, paths: Vec<String>) -> Result<u32, String> {
     let now = Utc::now().timestamp();
-    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    let conn = state.lock_db()?;
     let mut count = 0u32;
 
     ensure_virtual_folder(&conn, "drop-registered", "(Dropped Apps)", now)?;
@@ -521,7 +521,7 @@ pub async fn register_items(
     item_type: String,
 ) -> Result<u32, String> {
     let now = Utc::now().timestamp();
-    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    let conn = state.lock_db()?;
     let mut count = 0u32;
 
     let folder_id = match item_type.as_str() {
@@ -617,7 +617,7 @@ pub async fn get_items_by_type(
     item_type: String,
 ) -> Result<Vec<AppEntry>, String> {
     let mut result = {
-        let conn = state.db.lock().map_err(|e| e.to_string())?;
+        let conn = state.lock_db()?;
         queries::get_items_by_type(&conn, &item_type).map_err(|e| e.to_string())?
     };
     load_icons(&state, &mut result)?;
@@ -631,7 +631,7 @@ pub async fn get_excluded_items_by_type(
     item_type: String,
 ) -> Result<Vec<AppEntry>, String> {
     let mut result = {
-        let conn = state.db.lock().map_err(|e| e.to_string())?;
+        let conn = state.lock_db()?;
         queries::get_excluded_items_by_type(&conn, &item_type).map_err(|e| e.to_string())?
     };
     load_icons(&state, &mut result)?;
@@ -642,7 +642,7 @@ pub async fn get_excluded_items_by_type(
 #[tauri::command]
 pub async fn open_item(state: State<'_, AppState>, app_id: String) -> Result<(), String> {
     let (exe_path, item_type) = {
-        let conn = state.db.lock().map_err(|e| e.to_string())?;
+        let conn = state.lock_db()?;
         let now = Utc::now().timestamp();
         queries::increment_launch(&conn, &app_id, now).map_err(|e| e.to_string())?;
         let mut stmt = conn
@@ -704,13 +704,20 @@ pub struct CommandData {
     /// Run with UAC elevation
     #[serde(default)]
     pub admin: bool,
-    /// Keep the cmd window open after the script finishes
+    /// Keep the shell window open after the script finishes
     #[serde(default = "default_true")]
     pub keep_open: bool,
+    /// Which shell to use: "cmd" (default) or "pwsh" (PowerShell)
+    #[serde(default = "default_shell")]
+    pub shell: String,
 }
 
 fn default_true() -> bool {
     true
+}
+
+fn default_shell() -> String {
+    "cmd".to_string()
 }
 
 /// Encode a CommandData as a unique string to store in `exe_path`.
@@ -736,14 +743,20 @@ pub async fn register_command(
     cmd: String,
     admin: bool,
     keep_open: bool,
+    shell: Option<String>,
 ) -> Result<String, String> {
     let now = Utc::now().timestamp();
-    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    let conn = state.lock_db()?;
 
     ensure_virtual_folder(&conn, "command-registered", "(Registered Commands)", now)?;
 
     let id = Uuid::new_v4().to_string();
-    let data = CommandData { cmd, admin, keep_open };
+    let data = CommandData {
+        cmd,
+        admin,
+        keep_open,
+        shell: shell.unwrap_or_else(default_shell),
+    };
     let exe_path = encode_command_exe_path(&id, &data);
 
     let entry = AppEntry {
@@ -775,9 +788,15 @@ pub async fn update_command(
     cmd: String,
     admin: bool,
     keep_open: bool,
+    shell: Option<String>,
 ) -> Result<(), String> {
-    let conn = state.db.lock().map_err(|e| e.to_string())?;
-    let data = CommandData { cmd, admin, keep_open };
+    let conn = state.lock_db()?;
+    let data = CommandData {
+        cmd,
+        admin,
+        keep_open,
+        shell: shell.unwrap_or_else(default_shell),
+    };
     let new_exe_path = encode_command_exe_path(&app_id, &data);
     conn.execute(
         "UPDATE apps SET exe_path = ?1 WHERE id = ?2 AND item_type = 'command'",
@@ -793,7 +812,7 @@ pub async fn get_command_data(
     state: State<'_, AppState>,
     app_id: String,
 ) -> Result<CommandData, String> {
-    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    let conn = state.lock_db()?;
     let exe_path = queries::get_app_exe_path(&conn, &app_id)
         .map_err(|e| e.to_string())?
         .ok_or_else(|| "Command not found".to_string())?;
@@ -807,7 +826,7 @@ pub async fn launch_command(
     app_id: String,
 ) -> Result<(), String> {
     let data = {
-        let conn = state.db.lock().map_err(|e| e.to_string())?;
+        let conn = state.lock_db()?;
         let now = Utc::now().timestamp();
         queries::increment_launch(&conn, &app_id, now).map_err(|e| e.to_string())?;
         let exe_path = queries::get_app_exe_path(&conn, &app_id)
@@ -817,61 +836,109 @@ pub async fn launch_command(
             .ok_or_else(|| "Failed to decode command data".to_string())?
     };
 
-    // Collect usable (non-comment, non-empty) lines.
-    let lines: Vec<&str> = data
-        .cmd
-        .lines()
-        .map(|l| l.trim_end_matches('\r'))
-        .filter(|l| {
-            let t = l.trim_start();
-            !t.is_empty() && !t.starts_with("::") && !t.starts_with("REM ")
-        })
-        .collect();
+    let is_pwsh = data.shell == "pwsh";
 
-    if lines.is_empty() {
+    // For .bat we strip blank/comment lines so the cmd window stays clean;
+    // for .ps1 we keep the script verbatim (PowerShell handles its own
+    // comments and multi-line statements).
+    let script_body = if is_pwsh {
+        data.cmd.replace('\r', "")
+    } else {
+        let lines: Vec<&str> = data
+            .cmd
+            .lines()
+            .map(|l| l.trim_end_matches('\r'))
+            .filter(|l| {
+                let t = l.trim_start();
+                !t.is_empty() && !t.starts_with("::") && !t.starts_with("REM ")
+            })
+            .collect();
+        if lines.is_empty() {
+            return Err("Command is empty".to_string());
+        }
+        lines.join("\r\n")
+    };
+
+    if script_body.trim().is_empty() {
         return Err("Command is empty".to_string());
     }
 
     #[cfg(target_os = "windows")]
     {
-        // Write the commands to a temporary .bat file. This avoids all the
-        // shell-escaping pitfalls of trying to pass a multi-statement string
-        // through `cmd /C start cmd /K "..."`.
-        let bat_path = {
+        // Write the commands to a temporary script file. This avoids all the
+        // shell-escaping pitfalls of trying to pass multi-statement strings
+        // through `cmd /C` or PowerShell `-Command`.
+        let script_path = {
             let mut p = std::env::temp_dir();
-            p.push(format!("nanogram_cmd_{}.bat", Uuid::new_v4()));
+            let ext = if is_pwsh { "ps1" } else { "bat" };
+            p.push(format!("nanogram_cmd_{}.{}", Uuid::new_v4(), ext));
             p
         };
 
-        // Use CP932 (Shift-JIS) via chcp? No — just write UTF-8 with BOM-less bytes.
-        // cmd.exe processes .bat files using the OEM codepage, but ASCII commands
-        // (which this feature is mainly for) work fine regardless.
-        let mut body = String::from("@echo off\r\n");
-        for l in &lines {
-            body.push_str(l);
-            body.push_str("\r\n");
-        }
-        if data.keep_open {
-            // Leave the window open after the script finishes so the user
-            // can inspect the output.
-            body.push_str("echo.\r\n");
-            body.push_str("pause\r\n");
-        }
-
-        std::fs::write(&bat_path, body.as_bytes())
-            .map_err(|e| format!("Failed to write temp .bat: {}", e))?;
-
-        let bat_path_str = bat_path.to_string_lossy().into_owned();
-
-        if data.admin {
-            // Elevation: use ShellExecuteW with the "runas" verb pointing
-            // directly at the .bat file (Windows will invoke cmd.exe for us).
-            run_elevated_bat(&bat_path_str)?;
+        if is_pwsh {
+            // PowerShell handles UTF-8 with BOM correctly; without the BOM,
+            // PS5.1 reads the file as CP932 on Japanese systems and mangles
+            // multi-byte characters in the script.
+            let mut bytes = vec![0xEFu8, 0xBB, 0xBF];
+            bytes.extend_from_slice(script_body.as_bytes());
+            std::fs::write(&script_path, &bytes)
+                .map_err(|e| format!("Failed to write temp .ps1: {}", e))?;
         } else {
-            // No elevation: detach via `start` so the new cmd window is
-            // independent of the launcher process.
+            let mut body = String::from("@echo off\r\n");
+            body.push_str(&script_body);
+            body.push_str("\r\n");
+            if data.keep_open {
+                body.push_str("echo.\r\n");
+                body.push_str("pause\r\n");
+            }
+            std::fs::write(&script_path, body.as_bytes())
+                .map_err(|e| format!("Failed to write temp .bat: {}", e))?;
+        }
+
+        let script_path_str = script_path.to_string_lossy().into_owned();
+
+        if is_pwsh {
+            // PowerShell.exe with execution policy bypass for one-off scripts.
+            // Use -NoExit to keep the prompt open when keep_open is set.
+            let pwsh_args: Vec<String> = if data.keep_open {
+                vec![
+                    "-NoExit".into(),
+                    "-NoProfile".into(),
+                    "-ExecutionPolicy".into(),
+                    "Bypass".into(),
+                    "-File".into(),
+                    script_path_str.clone(),
+                ]
+            } else {
+                vec![
+                    "-NoProfile".into(),
+                    "-ExecutionPolicy".into(),
+                    "Bypass".into(),
+                    "-File".into(),
+                    script_path_str.clone(),
+                ]
+            };
+
+            if data.admin {
+                run_elevated("powershell.exe", &pwsh_args)?;
+            } else {
+                // Detach via `cmd /C start` so the PowerShell window is
+                // independent of the launcher process.
+                let mut shell_cmd = std::process::Command::new("cmd");
+                shell_cmd.arg("/C").arg("start").arg("").arg("powershell.exe");
+                for a in &pwsh_args {
+                    shell_cmd.arg(a);
+                }
+                shell_cmd
+                    .spawn()
+                    .map_err(|e| format!("Failed to launch PowerShell: {}", e))?;
+            }
+        } else if data.admin {
+            // .bat with UAC: ShellExecuteW handles cmd.exe invocation for us.
+            run_elevated_bat(&script_path_str)?;
+        } else {
             std::process::Command::new("cmd")
-                .args(["/C", "start", "", "cmd", "/C", &bat_path_str])
+                .args(["/C", "start", "", "cmd", "/C", &script_path_str])
                 .spawn()
                 .map_err(|e| format!("Failed to launch command: {}", e))?;
         }
@@ -879,7 +946,7 @@ pub async fn launch_command(
 
     #[cfg(not(target_os = "windows"))]
     {
-        let _ = (lines, data);
+        let _ = (script_body, data, is_pwsh);
         return Err("Command items are only supported on Windows".to_string());
     }
 
@@ -913,6 +980,47 @@ fn run_elevated_bat(bat_path: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// Run a program with arguments under UAC elevation (e.g. PowerShell.exe + script args).
+#[cfg(target_os = "windows")]
+fn run_elevated(program: &str, args: &[String]) -> Result<(), String> {
+    use windows::core::PCWSTR;
+    use windows::Win32::UI::Shell::ShellExecuteW;
+    use windows::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
+
+    // Quote any arg containing whitespace so PowerShell parses it as one token.
+    let params: String = args
+        .iter()
+        .map(|a| {
+            if a.chars().any(char::is_whitespace) && !a.starts_with('"') {
+                format!("\"{}\"", a)
+            } else {
+                a.clone()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ");
+
+    let verb: Vec<u16> = "runas\0".encode_utf16().collect();
+    let file: Vec<u16> = program.encode_utf16().chain(std::iter::once(0)).collect();
+    let parameters: Vec<u16> = params.encode_utf16().chain(std::iter::once(0)).collect();
+
+    let rc = unsafe {
+        ShellExecuteW(
+            None,
+            PCWSTR(verb.as_ptr()),
+            PCWSTR(file.as_ptr()),
+            PCWSTR(parameters.as_ptr()),
+            PCWSTR::null(),
+            SW_SHOWNORMAL,
+        )
+    };
+
+    if rc.0 as isize <= 32 {
+        return Err(format!("ShellExecuteW failed (code {})", rc.0 as isize));
+    }
+    Ok(())
+}
+
 /// Launch an app with administrator privileges (UAC elevation).
 /// Works for .exe and .lnk — resolves shortcut targets first.
 #[tauri::command]
@@ -921,7 +1029,7 @@ pub async fn launch_app_as_admin(
     app_id: String,
 ) -> Result<(), String> {
     let exe_path = {
-        let conn = state.db.lock().map_err(|e| e.to_string())?;
+        let conn = state.lock_db()?;
         let now = Utc::now().timestamp();
         queries::increment_launch(&conn, &app_id, now).map_err(|e| e.to_string())?;
         queries::get_app_exe_path(&conn, &app_id)

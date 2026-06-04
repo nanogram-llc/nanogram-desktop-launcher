@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect, useLayoutEffect, useRef } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
@@ -27,8 +27,19 @@ function LauncherWindow() {
   ]);
   const [pinnedColumns, setPinnedColumns] = useState(9);
   const [pinnedRows, setPinnedRows] = useState(2);
+  const [showEvacButton, setShowEvacButton] = useState(false);
+  const [evacuated, setEvacuated] = useState(false);
   const searchIdRef = useRef(0);
   const settingsRef = useRef<Settings | null>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
+  // Last measured CSS pixel height, updated by the ResizeObserver below.
+  // applySettings reuses it instead of the formula so that re-opening the
+  // launcher doesn't grow it back to a too-generous formula estimate.
+  const measuredHRef = useRef<number | null>(null);
+  // Layout signature ("cols-rows-sections"). applySettings only triggers a
+  // window resize when this changes, so launcher-show with the same
+  // settings doesn't kick the window back to formula size.
+  const layoutSigRef = useRef<string>("");
 
   // Search history (persisted in localStorage)
   const HISTORY_KEY = "nanogram-search-history";
@@ -60,23 +71,40 @@ function LauncherWindow() {
   const applySettings = useCallback((s: Settings) => {
     settingsRef.current = s;
     setMaxResults(s.max_results);
-    setPinnedIds(s.pinned_items || []);
-    const secs = (s.sections && s.sections.length > 0) ? s.sections : sections;
-    setSections(secs);
+    setShowEvacButton(!!s.show_evac_button);
     const cols = s.pinned_columns || 9;
     const rows = s.pinned_rows || 2;
+    // 古いデータが現在のグリッドサイズより大きい/小さい場合に正規化
+    const slots = cols * rows;
+    const rawIds = s.pinned_items || [];
+    const normalized = Array.from({ length: slots }, (_, i) => rawIds[i] ?? "");
+    setPinnedIds(normalized);
+    const secs = (s.sections && s.sections.length > 0) ? s.sections : sections;
+    setSections(secs);
     setPinnedColumns(cols);
     setPinnedRows(rows);
-    // Calculate total grid rows and visible section count for window sizing
+    // Only resize the window when layout-affecting settings actually
+    // changed; otherwise we'd undo the ResizeObserver's measurement on
+    // every launcher-show.
     const visibleSections = secs.filter((sec) => sec.visible);
     const sectionCount = visibleSections.length;
     const pinnedVisible = visibleSections.some((sec) => sec.id === "pinned");
-    const extraRows = sectionCount - (pinnedVisible ? 1 : 0); // recent/frequent = 1 row each
+    const extraRows = sectionCount - (pinnedVisible ? 1 : 0);
     const totalRows = extraRows + (pinnedVisible ? rows : 0);
-    api.resizeWindow(cols, totalRows, sectionCount).catch(console.error);
+    const sig = `${cols}-${rows}-${sectionCount}-${pinnedVisible ? 1 : 0}`;
+    if (sig !== layoutSigRef.current) {
+      const formulaH = totalRows * 72 + sectionCount * 28 + 128;
+      // Prefer the last measured content height; fall back to formula
+      // only on the very first call before ResizeObserver has run.
+      const h = measuredHRef.current ?? formulaH;
+      api
+        .setLauncherSize(cols, h, window.devicePixelRatio)
+        .catch(console.error);
+      layoutSigRef.current = sig;
+    }
   }, []);
 
-  const loadRecentFrequent = useCallback(async (cols: number, pIds: string[]) => {
+  const loadRecentFrequent = useCallback(async (cols: number, rows: number, pIds: string[]) => {
     try {
       const apps = await api.getApps(null, 100);
       const recent = apps
@@ -89,11 +117,34 @@ function LauncherWindow() {
         .slice(0, cols);
 
       const appMap = new Map(apps.map((a) => [a.id, a]));
-      const pinned = pIds.map((id) => appMap.get(id)).filter((a): a is AppEntry => !!a);
+      // グリッドサイズに正規化し、DBから消えた古いIDを空文字に掃除
+      const slots = cols * rows;
+      const cleanedIds = Array.from({ length: slots }, (_, i) => {
+        const id = pIds[i] ?? "";
+        return id && appMap.has(id) ? id : "";
+      });
+      const pinned = cleanedIds
+        .filter((id) => id !== "")
+        .map((id) => appMap.get(id))
+        .filter((a): a is AppEntry => !!a);
 
       setRecentApps(recent);
       setFrequentApps(frequent);
       setPinnedApps(pinned);
+
+      // 掃除で内容が変わった場合はstateと設定ファイルに反映
+      const changed =
+        cleanedIds.length !== pIds.length ||
+        cleanedIds.some((id, i) => id !== (pIds[i] ?? ""));
+      if (changed) {
+        setPinnedIds(cleanedIds);
+        const s = settingsRef.current;
+        if (s) {
+          const updated = { ...s, pinned_items: cleanedIds };
+          settingsRef.current = updated;
+          api.updateSettings(updated).catch(console.error);
+        }
+      }
     } catch {
       // ignore
     }
@@ -104,9 +155,9 @@ function LauncherWindow() {
     const loadAll = () => {
       api.getSettings().then((s) => {
         applySettings(s);
-        loadRecentFrequent(s.pinned_columns || 9, s.pinned_items || []);
+        loadRecentFrequent(s.pinned_columns || 9, s.pinned_rows || 2, s.pinned_items || []);
       }).catch(() => {
-        loadRecentFrequent(pinnedColumns, pinnedIds);
+        loadRecentFrequent(pinnedColumns, pinnedRows, pinnedIds);
       });
     };
     loadAll();
@@ -121,12 +172,33 @@ function LauncherWindow() {
     const unlisten = listen<Settings>("settings-changed", (event) => {
       const s = event.payload;
       applySettings(s);
-      loadRecentFrequent(s.pinned_columns || 9, s.pinned_items || []);
+      loadRecentFrequent(s.pinned_columns || 9, s.pinned_rows || 2, s.pinned_items || []);
     });
     return () => {
       unlisten.then((fn) => fn());
     };
   }, [applySettings, loadRecentFrequent]);
+
+  // Evacuation status: fetch on mount + on launcher-show, keep in sync with
+  // tray-triggered changes, and surface tray operation results as toasts.
+  useEffect(() => {
+    const refresh = () => {
+      api.getEvacStatus().then((s) => setEvacuated(s.evacuated)).catch(() => {});
+    };
+    refresh();
+    const unlistenShow = listen("launcher-show", refresh);
+    const unlistenChanged = listen<{ evacuated: boolean }>("evac-changed", (e) => {
+      setEvacuated(e.payload.evacuated);
+    });
+    const unlistenToast = listen<string>("evac-toast", (e) => {
+      showToast(e.payload);
+    });
+    return () => {
+      unlistenShow.then((fn) => fn());
+      unlistenChanged.then((fn) => fn());
+      unlistenToast.then((fn) => fn());
+    };
+  }, []);
 
   // Drag & drop registration on launcher screen
   useEffect(() => {
@@ -177,7 +249,7 @@ function LauncherWindow() {
 
         if (totalCount > 0) {
           showToast(`${msgs.join("、")} を登録しました`);
-          loadRecentFrequent(pinnedColumns, pinnedIds);
+          loadRecentFrequent(pinnedColumns, pinnedRows, pinnedIds);
         } else {
           showToast("新規の登録対象はありませんでした");
         }
@@ -287,16 +359,13 @@ function LauncherWindow() {
   }, []);
 
   const handlePin = useCallback(async (appId: string) => {
-    if (pinnedIds.includes(appId)) return;
-    const next = [...pinnedIds];
+    const slots = pinnedColumns * pinnedRows;
+    // グリッドサイズに正規化（古いデータの残存を切り捨て、不足分を空文字で埋める）
+    const next = Array.from({ length: slots }, (_, i) => pinnedIds[i] ?? "");
+    if (next.includes(appId)) return;
     const emptyIdx = next.indexOf("");
-    if (emptyIdx !== -1) {
-      next[emptyIdx] = appId;
-    } else if (next.filter((id) => id !== "").length >= pinnedColumns * pinnedRows) {
-      return;
-    } else {
-      next.push(appId);
-    }
+    if (emptyIdx === -1) return; // 空きなし=満杯
+    next[emptyIdx] = appId;
     setPinnedIds(next);
 
     const allApps = [...recentApps, ...frequentApps, ...results];
@@ -335,7 +404,7 @@ function LauncherWindow() {
     // Create new settings window
     const settingsWin = new WebviewWindow("settings", {
       url: "/",
-      title: "設定 - nanogram Launcher",
+      title: "設定 - nanogram desktop LauncheR",
       width: 680,
       height: 460,
       resizable: false,
@@ -347,6 +416,41 @@ function LauncherWindow() {
     settingsWin.once("tauri://destroyed", () => {
       api.setBlurHide(true);
     });
+  }, []);
+
+  // ── DB evacuation controls ──
+  const handleEvacuate = useCallback(async () => {
+    try {
+      const s = await api.evacuate();
+      setEvacuated(s.evacuated);
+      showToast("DBをローカルに退避しました");
+    } catch (e) {
+      showToast(`退避に失敗: ${e}`);
+    }
+  }, []);
+
+  const handleMerge = useCallback(async () => {
+    try {
+      const r = await api.mergeEvacuation();
+      setEvacuated(false);
+      if (r.strategy === "overwrite") {
+        showToast("Dropboxへ反映しました（上書き）");
+      } else {
+        showToast(`Dropboxへマージ（追加 ${r.apps_added} / 更新 ${r.apps_updated} / フォルダ ${r.folders_added}）`);
+      }
+    } catch (e) {
+      showToast(`マージに失敗: ${e}`);
+    }
+  }, []);
+
+  const handleDiscard = useCallback(async () => {
+    try {
+      const s = await api.discardEvacuation();
+      setEvacuated(s.evacuated);
+      showToast("退避を破棄しました");
+    } catch (e) {
+      showToast(`破棄に失敗: ${e}`);
+    }
   }, []);
 
   const handleKeyDown = useCallback(
@@ -409,9 +513,33 @@ function LauncherWindow() {
     [query, results, selectedIndex, history, handleLaunch, openSettings]
   );
 
+  // Resize the window to fit the actual rendered content. Uses
+  // window.devicePixelRatio (not Rust's scale_factor) for physical pixel
+  // conversion — they can disagree on some Windows DPI configurations.
+  useLayoutEffect(() => {
+    const el = contentRef.current;
+    if (!el) return;
+    const update = () => {
+      if (!contentRef.current) return;
+      const rect = contentRef.current.getBoundingClientRect();
+      const cssH = Math.ceil(rect.height) + 2;
+      const cols = settingsRef.current?.pinned_columns ?? pinnedColumns;
+      if (cssH > 0 && cols > 0) {
+        measuredHRef.current = cssH;
+        api
+          .setLauncherSize(cols, cssH, window.devicePixelRatio)
+          .catch(() => {});
+      }
+    };
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [pinnedColumns]);
+
   return (
     <div
-      className="w-full h-full rounded-2xl overflow-hidden border border-white/20 dark:border-white/10 bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl shadow-2xl"
+      className="w-full h-full rounded-2xl overflow-hidden border border-white/20 dark:border-white/10 bg-white/90 dark:bg-gray-900/80 backdrop-blur-xl shadow-2xl"
       data-tauri-drag-region
     >
       {/* Toast */}
@@ -432,44 +560,92 @@ function LauncherWindow() {
         </div>
       )}
 
-      <SearchBar
-        value={query}
-        onChange={(v) => { historyIndexRef.current = -1; setQuery(v); }}
-        onKeyDown={handleKeyDown}
-        onClear={() => { historyIndexRef.current = -1; setQuery(""); }}
-      />
-      <div className="border-t border-gray-200/50 dark:border-gray-700/50">
-        {query.trim() ? (
-          <ResultsList
-            apps={results}
-            selectedIndex={selectedIndex}
-            onLaunch={handleLaunch}
-            onExclude={handleExclude}
-            onSetTags={handleSetTags}
-            onPin={handlePin}
-            pinnedIds={pinnedIds}
-            maxPinned={pinnedColumns * pinnedRows}
-            onSelect={setSelectedIndex}
-          />
-        ) : (
-          <RecentStrip
-            recentApps={recentApps}
-            frequentApps={frequentApps}
-            pinnedApps={pinnedApps}
-            pinnedIds={pinnedIds}
-            sections={sections}
-            pinnedColumns={pinnedColumns}
-            pinnedRows={pinnedRows}
-            onLaunch={handleLaunch}
-            onExclude={handleExclude}
-            onSetTags={handleSetTags}
-            onPin={handlePin}
-            onUnpin={handleUnpin}
-            onReorderPinned={handleReorderPinned}
-          />
-        )}
+      <div ref={contentRef}>
+        <SearchBar
+          value={query}
+          onChange={(v) => { historyIndexRef.current = -1; setQuery(v); }}
+          onKeyDown={handleKeyDown}
+          onClear={() => { historyIndexRef.current = -1; setQuery(""); }}
+        />
+        <div className="border-t border-gray-200/50 dark:border-gray-700/50">
+          {query.trim() ? (
+            <ResultsList
+              apps={results}
+              selectedIndex={selectedIndex}
+              onLaunch={handleLaunch}
+              onExclude={handleExclude}
+              onSetTags={handleSetTags}
+              onPin={handlePin}
+              pinnedIds={pinnedIds}
+              maxPinned={pinnedColumns * pinnedRows}
+              onSelect={setSelectedIndex}
+            />
+          ) : (
+            <RecentStrip
+              recentApps={recentApps}
+              frequentApps={frequentApps}
+              pinnedApps={pinnedApps}
+              pinnedIds={pinnedIds}
+              sections={sections}
+              pinnedColumns={pinnedColumns}
+              pinnedRows={pinnedRows}
+              onLaunch={handleLaunch}
+              onExclude={handleExclude}
+              onSetTags={handleSetTags}
+              onPin={handlePin}
+              onUnpin={handleUnpin}
+              onReorderPinned={handleReorderPinned}
+            />
+          )}
+        </div>
       </div>
-      <div className="absolute top-3 right-3">
+      <div className="absolute top-3 right-3 flex items-center gap-1">
+        {showEvacButton && (
+          <>
+            {/* Evacuation toggle: ON copies the DB local so Dropbox can sync */}
+            <button
+              onClick={() => { if (!evacuated) handleEvacuate(); }}
+              className={`flex items-center gap-1 px-1.5 py-1 rounded-lg text-[11px] transition-colors ${
+                evacuated
+                  ? "text-amber-600 dark:text-amber-400 bg-amber-500/10"
+                  : "text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-500/10"
+              }`}
+              title={evacuated ? "退避中（ローカルDBを参照）" : "DBをローカルに退避してDropbox同期を解放"}
+            >
+              <span
+                className={`relative w-7 h-4 rounded-full transition-colors ${
+                  evacuated ? "bg-amber-500" : "bg-gray-300 dark:bg-gray-600"
+                }`}
+              >
+                <span
+                  className={`absolute top-0.5 left-0.5 w-3 h-3 bg-white rounded-full transition-transform shadow ${
+                    evacuated ? "translate-x-3" : ""
+                  }`}
+                />
+              </span>
+              退避
+            </button>
+            {evacuated && (
+              <>
+                <button
+                  onClick={handleMerge}
+                  className="px-2 py-1 rounded-lg text-[11px] font-medium text-blue-600 dark:text-blue-400 hover:bg-blue-500/10 transition-colors"
+                  title="ローカルの変更をDropboxへ統合して退避を解除"
+                >
+                  マージ実行
+                </button>
+                <button
+                  onClick={handleDiscard}
+                  className="px-2 py-1 rounded-lg text-[11px] text-gray-400 hover:text-red-500 hover:bg-red-500/10 transition-colors"
+                  title="ローカルの変更を破棄して退避を解除"
+                >
+                  破棄
+                </button>
+              </>
+            )}
+            <div className="w-px h-4 bg-gray-300 dark:bg-gray-600 mx-0.5" />
+          </>
+        )}
         <button
           onClick={openSettings}
           className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-500/10 transition-colors"

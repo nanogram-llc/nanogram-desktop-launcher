@@ -60,7 +60,7 @@ pub fn scan_folder_impl(
     }
 
     let scanned = scanner::scan_directory(dir);
-    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    let conn = state.lock_db()?;
     let now = Utc::now().timestamp();
     let mut new_apps = Vec::new();
 

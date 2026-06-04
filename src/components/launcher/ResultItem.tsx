@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useLayoutEffect } from "react";
 import type { AppEntry } from "../../lib/types";
 import * as api from "../../lib/tauri";
+import CommandIcon, { parseCommandExePath } from "./CommandIcon";
 
 interface ResultItemProps {
   app: AppEntry;
@@ -18,7 +19,6 @@ function ResultItem({ app, isSelected, onLaunch, onExclude, onSetTags, onPin, pi
   const isPinnedFull = pinnedIds.filter((id) => id !== "").length >= maxPinned;
   const isAlreadyPinned = pinnedIds.includes(app.id);
   const [menuPos, setMenuPos] = useState<{ x: number; y: number } | null>(null);
-  const [menuCtrl, setMenuCtrl] = useState(false);
   const [editingTags, setEditingTags] = useState(false);
   const [tagInput, setTagInput] = useState("");
   const menuRef = useRef<HTMLDivElement>(null);
@@ -48,7 +48,6 @@ function ResultItem({ app, isSelected, onLaunch, onExclude, onSetTags, onPin, pi
 
   const handleContextMenu = (e: React.MouseEvent) => {
     e.preventDefault();
-    setMenuCtrl(e.ctrlKey);
     setMenuPos({ x: e.clientX, y: e.clientY });
   };
 
@@ -62,24 +61,17 @@ function ResultItem({ app, isSelected, onLaunch, onExclude, onSetTags, onPin, pi
   };
 
   const isCommand = app.item_type === "command";
+  const cmdData = isCommand ? parseCommandExePath(app.exe_path) : null;
 
-  // For command items, the exe_path field stores an encoded JSON blob —
-  // extract the first line of the actual command for display.
   const displayPath = (() => {
     if (!isCommand) return app.exe_path;
-    const match = app.exe_path.match(/^cmd:\/\/[^|]+\|(.+)$/);
-    if (!match) return "(command)";
-    try {
-      const data = JSON.parse(match[1]);
-      const firstLine = String(data.cmd || "")
-        .split("\n")
-        .map((l: string) => l.trim())
-        .find((l: string) => l.length > 0);
-      const prefix = data.admin ? "⚡ " : "";
-      return prefix + (firstLine ? `${firstLine} …` : "(command)");
-    } catch {
-      return "(command)";
-    }
+    if (!cmdData) return "(command)";
+    const firstLine = cmdData.cmd
+      .split("\n")
+      .map((l: string) => l.trim())
+      .find((l: string) => l.length > 0);
+    const prefix = cmdData.admin ? "⚡ " : "";
+    return prefix + (firstLine ? `${firstLine} …` : "(command)");
   })();
 
   return (
@@ -94,18 +86,14 @@ function ResultItem({ app, isSelected, onLaunch, onExclude, onSetTags, onPin, pi
       onMouseEnter={onMouseEnter}
     >
       <div className="flex items-center gap-3">
-        {app.icon_base64 ? (
+        {isCommand ? (
+          <CommandIcon shell={cmdData?.shell ?? "cmd"} size="sm" />
+        ) : app.icon_base64 ? (
           <img
             src={app.icon_base64}
             alt=""
             className="w-8 h-8 rounded-md shrink-0"
           />
-        ) : isCommand ? (
-          <div className="w-8 h-8 rounded-md bg-gray-800 dark:bg-gray-700 flex items-center justify-center shrink-0">
-            <svg className="w-4 h-4 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-            </svg>
-          </div>
         ) : (
           <div className="w-8 h-8 rounded-md bg-gray-300 dark:bg-gray-600 flex items-center justify-center shrink-0">
             <svg className="w-4 h-4 text-gray-500 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -176,7 +164,7 @@ function ResultItem({ app, isSelected, onLaunch, onExclude, onSetTags, onPin, pi
           style={{ left: menuPos.x, top: menuPos.y }}
           onClick={(e) => e.stopPropagation()}
         >
-          {menuCtrl && (app.item_type === "app" || app.item_type == null || app.item_type === "file") && (
+          {(app.item_type === "app" || app.item_type == null || app.item_type === "file") && (
             <>
               <button
                 className="w-full px-3 py-1.5 text-xs text-left text-amber-600 dark:text-amber-400 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors font-medium"

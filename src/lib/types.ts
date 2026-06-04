@@ -46,6 +46,19 @@ export interface Settings {
   pinned_columns: number;
   pinned_rows: number;
   debug_log: boolean;
+  show_evac_button: boolean;
+}
+
+export interface EvacStatus {
+  evacuated: boolean;
+}
+
+export interface MergeResult {
+  /** "overwrite" (Dropbox side untouched) or "merge" (3-way reconcile). */
+  strategy: string;
+  apps_added: number;
+  apps_updated: number;
+  folders_added: number;
 }
 
 export type ScanMode = "add_new" | "add_all_except_excluded";

@@ -7,7 +7,10 @@ use std::path::Path;
 pub fn init_db(db_path: &Path) -> Result<Connection, rusqlite::Error> {
     let conn = Connection::open(db_path)?;
 
-    conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;")?;
+    // DELETE journal mode — Dropbox 同期と相性が悪い .db-wal / .db-shm を
+    // 生成しないようにする。ランチャー程度の書き込み頻度では性能差は無視できる。
+    // 既存 WAL は journal_mode 切り替え時に自動マージ&削除される。
+    conn.execute_batch("PRAGMA journal_mode=DELETE; PRAGMA foreign_keys=ON;")?;
 
     conn.execute_batch(
         "

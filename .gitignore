@@ -21,6 +21,10 @@ Thumbs.db
 .vscode/
 .idea/
 *.swp
+*.tmp.*
+
+# Vite — esbuild temp files emitted when loading the TS config
+vite.config.ts.timestamp-*.mjs
 
 # Local settings / data
 settings.json

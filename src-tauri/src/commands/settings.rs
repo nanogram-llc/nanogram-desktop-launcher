@@ -110,7 +110,7 @@ pub fn sync_registered_items(state: &AppState) -> Result<u32, String> {
         return Ok(0);
     }
 
-    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    let conn = state.lock_db()?;
     let now = Utc::now().timestamp();
     let mut count = 0u32;
 

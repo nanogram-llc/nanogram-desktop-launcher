@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { AppEntry, Folder, Settings, ScanMode } from "./types";
+import type { AppEntry, Folder, Settings, ScanMode, EvacStatus, MergeResult } from "./types";
 
 export async function getApps(
   query: string | null,
@@ -59,6 +59,17 @@ export async function resizeWindow(cols: number, totalRows: number, sectionCount
   return invoke("resize_window", { cols, totalRows, sectionCount });
 }
 
+/// Resize the launcher window using JS-reported devicePixelRatio for
+/// physical pixel conversion (the only DPR that matches the WebView's
+/// actual rendering). cssHeight is in CSS pixels.
+export async function setLauncherSize(
+  cols: number,
+  cssHeight: number,
+  dpr: number
+): Promise<void> {
+  return invoke("set_launcher_size", { cols, height: cssHeight, dpr });
+}
+
 export async function removeFolder(folderId: string): Promise<void> {
   return invoke("remove_folder", { folderId });
 }
@@ -80,6 +91,24 @@ export async function getSettings(): Promise<Settings> {
 
 export async function updateSettings(settings: Settings): Promise<void> {
   return invoke("update_settings", { settings });
+}
+
+// ── DB evacuation mode ──
+
+export async function getEvacStatus(): Promise<EvacStatus> {
+  return invoke("get_evac_status");
+}
+
+export async function evacuate(): Promise<EvacStatus> {
+  return invoke("evacuate");
+}
+
+export async function mergeEvacuation(): Promise<MergeResult> {
+  return invoke("merge_evacuation");
+}
+
+export async function discardEvacuation(): Promise<EvacStatus> {
+  return invoke("discard_evacuation");
 }
 
 export async function getIcon(appId: string): Promise<string> {
@@ -139,30 +168,47 @@ export async function getExeDir(): Promise<string> {
   return invoke("get_exe_dir");
 }
 
+export async function setVibracyTheme(dark: boolean): Promise<void> {
+  return invoke("set_vibrancy_theme", { dark });
+}
+
 // ── Command items ──
+
+export type Shell = "cmd" | "pwsh";
 
 export interface CommandData {
   cmd: string;
   admin: boolean;
   keep_open: boolean;
+  shell?: Shell;
 }
 
 export async function registerCommand(
   name: string,
   cmd: string,
   admin: boolean,
-  keepOpen: boolean
+  keepOpen: boolean,
+  shell: Shell = "cmd"
 ): Promise<string> {
-  return invoke("register_command", { name, cmd, admin, keepOpen });
+  return invoke("register_command", { name, cmd, admin, keepOpen, shell });
 }
 
 export async function updateCommand(
   appId: string,
   cmd: string,
   admin: boolean,
-  keepOpen: boolean
+  keepOpen: boolean,
+  shell: Shell = "cmd"
 ): Promise<void> {
-  return invoke("update_command", { appId, cmd, admin, keepOpen });
+  return invoke("update_command", { appId, cmd, admin, keepOpen, shell });
+}
+
+export async function regenerateMissingIcons(): Promise<number> {
+  return invoke("regenerate_missing_icons");
+}
+
+export async function regenerateAllIcons(): Promise<number> {
+  return invoke("regenerate_all_icons");
 }
 
 export async function getCommandData(appId: string): Promise<CommandData> {

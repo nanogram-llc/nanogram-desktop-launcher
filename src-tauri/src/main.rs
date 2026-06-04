@@ -29,29 +29,6 @@ fn main() {
         let handle = unsafe { CreateMutexW(std::ptr::null(), 0, MUTEX_NAME.as_ptr()) };
         let err = unsafe { GetLastError() };
 
-        // Diagnostic: write result to a log file next to the exe
-        let log_msg = format!(
-            "[{}] pid={} handle={:?} err={} already_exists={}\n",
-            chrono_now(),
-            std::process::id(),
-            handle,
-            err,
-            err == ERROR_ALREADY_EXISTS
-        );
-        if let Ok(exe) = std::env::current_exe() {
-            if let Some(dir) = exe.parent() {
-                let log_path = dir.join("single_instance_debug.log");
-                use std::io::Write;
-                if let Ok(mut f) = std::fs::OpenOptions::new()
-                    .create(true)
-                    .append(true)
-                    .open(log_path)
-                {
-                    let _ = f.write_all(log_msg.as_bytes());
-                }
-            }
-        }
-
         if handle.is_null() || err == ERROR_ALREADY_EXISTS {
             // Another instance is already running — try to show its window, then exit
             activate_existing_instance();
@@ -62,16 +39,6 @@ fn main() {
     }
 
     launcher_lib::run()
-}
-
-#[cfg(target_os = "windows")]
-fn chrono_now() -> String {
-    use std::time::{SystemTime, UNIX_EPOCH};
-    let secs = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0);
-    format!("{}", secs)
 }
 
 /// Second instance detected — just exit. Do NOT force-show the first

@@ -95,6 +95,8 @@ pub struct Settings {
     pub pinned_rows: u32,
     pub excluded_patterns: Vec<String>,
     pub debug_log: bool,
+    /// Show the DB evacuation controls on the main launcher window.
+    pub show_evac_button: bool,
 }
 
 impl Default for Settings {
@@ -116,6 +118,7 @@ impl Default for Settings {
             pinned_rows: 2,
             excluded_patterns: Vec::new(),
             debug_log: false,
+            show_evac_button: false,
         }
     }
 }

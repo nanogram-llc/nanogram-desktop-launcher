@@ -1,8 +1,7 @@
 import { useState, useEffect, useLayoutEffect, useRef, useCallback } from "react";
 import type { AppEntry, SectionConfig } from "../../lib/types";
 import * as api from "../../lib/tauri";
-
-const ITEM_SIZE = 64; // px per item (w-16)
+import CommandIcon, { parseCommandExePath } from "./CommandIcon";
 
 interface RecentStripProps {
   recentApps: AppEntry[];
@@ -43,7 +42,9 @@ function AppIcon({
       }`}
       title={app.name}
     >
-      {app.icon_base64 ? (
+      {app.item_type === "command" ? (
+        <CommandIcon shell={parseCommandExePath(app.exe_path)?.shell ?? "cmd"} />
+      ) : app.icon_base64 ? (
         <img src={app.icon_base64} alt="" className="w-10 h-10 rounded-lg pointer-events-none" draggable={false} />
       ) : (
         <div className="w-10 h-10 rounded-lg bg-gray-300 dark:bg-gray-600 flex items-center justify-center">
@@ -99,7 +100,7 @@ function RecentStrip({
     const id = pinnedIds[i] || "";
     grid.push(id ? appMap.get(id) || null : null);
   }
-  const filledCount = pinnedIds.filter((id) => id !== "").length;
+  const filledCount = pinnedIds.slice(0, gridSlots).filter((id) => id !== "").length;
   const isPinnedFull = filledCount >= gridSlots;
 
   // Find which slot the mouse is over
@@ -233,7 +234,8 @@ function RecentStrip({
     pinned: "固定",
   };
 
-  const gridStyle = { gridTemplateColumns: `repeat(${pinnedColumns}, ${ITEM_SIZE}px)` };
+  // 1fr で列幅を等分 — 固定px だと DPI 差で overflow して欠けるため
+  const gridStyle = { gridTemplateColumns: `repeat(${pinnedColumns}, minmax(0, 1fr))` };
 
   const renderSection = (secId: string) => {
     if (secId === "recent" && recentApps.length > 0) {
@@ -242,7 +244,7 @@ function RecentStrip({
           <div className="text-[10px] font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wider px-1 mb-1">
             {SECTION_LABELS[secId]}
           </div>
-          <div className="grid gap-0.5 w-fit mx-auto" style={gridStyle}>
+          <div className="grid gap-0.5 w-full" style={gridStyle}>
             {recentApps.slice(0, pinnedColumns).map((app) => (
               <div key={app.id}>
                 <AppIcon app={app} onLaunch={onLaunch} onContextMenu={(e, a) => handleContextMenu(e, a, false)} />
@@ -258,7 +260,7 @@ function RecentStrip({
           <div className="text-[10px] font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wider px-1 mb-1">
             {SECTION_LABELS[secId]}
           </div>
-          <div className="grid gap-0.5 w-fit mx-auto" style={gridStyle}>
+          <div className="grid gap-0.5 w-full" style={gridStyle}>
             {frequentApps.slice(0, pinnedColumns).map((app) => (
               <div key={app.id}>
                 <AppIcon app={app} onLaunch={onLaunch} onContextMenu={(e, a) => handleContextMenu(e, a, false)} />
@@ -276,7 +278,7 @@ function RecentStrip({
           </div>
           <div
             ref={gridRef}
-            className="grid gap-0.5 w-fit mx-auto"
+            className="grid gap-0.5 w-full"
             style={gridStyle}
           >
             {grid.map((app, idx) => {
@@ -288,7 +290,7 @@ function RecentStrip({
                   ref={(el) => { slotRefs.current[idx] = el; }}
                   className={`rounded-xl transition-all duration-100 ${
                     isOver ? "ring-2 ring-blue-400 bg-blue-500/10" : ""
-                  } ${!app ? "h-16 bg-gray-100/50 dark:bg-gray-800/30" : ""}`}
+                  } ${!app ? "aspect-square bg-gray-100/50 dark:bg-gray-800/30" : ""}`}
                 >
                   {app && (
                     <AppIcon
@@ -310,7 +312,7 @@ function RecentStrip({
   };
 
   return (
-    <div className="px-4 py-2 relative">
+    <div className="px-4 pt-2 pb-5 relative">
       {sections.filter((s) => s.visible).map((s) => renderSection(s.id))}
 
       {/* Drag ghost */}
@@ -369,7 +371,7 @@ function RecentStrip({
           <div className="px-3 py-1 text-[10px] text-gray-400 dark:text-gray-500 truncate border-b border-gray-100 dark:border-gray-700">
             {menuState.app.name}
           </div>
-          {menuState.ctrlKey && (menuState.app.item_type === "app" || menuState.app.item_type == null || menuState.app.item_type === "file") && (
+          {(menuState.app.item_type === "app" || menuState.app.item_type == null || menuState.app.item_type === "file") && (
             <>
               <button
                 className="w-full px-3 py-1.5 text-xs text-left text-amber-600 dark:text-amber-400 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors font-medium"

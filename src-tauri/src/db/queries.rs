@@ -258,6 +258,69 @@ pub fn get_app_exe_path(
     Ok(rows.next().transpose()?)
 }
 
+pub fn update_icon_cache_path(
+    conn: &Connection,
+    app_id: &str,
+    icon_cache_path: &str,
+) -> Result<(), rusqlite::Error> {
+    conn.execute(
+        "UPDATE apps SET icon_cache_path = ?1 WHERE id = ?2",
+        params![icon_cache_path, app_id],
+    )?;
+    Ok(())
+}
+
+/// Apps that need icon (re)extraction: icon_cache_path is NULL and item is
+/// not a registered command (commands use a frontend-rendered icon).
+pub fn get_apps_missing_icon(
+    conn: &Connection,
+) -> Result<Vec<(String, String, String)>, rusqlite::Error> {
+    let mut stmt = conn.prepare(
+        "SELECT id, exe_path, COALESCE(item_type, 'app') FROM apps
+         WHERE icon_cache_path IS NULL
+           AND (item_type IS NULL OR item_type IN ('app', 'file', 'folder'))",
+    )?;
+    let rows = stmt
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+            ))
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(rows)
+}
+
+/// Every non-command app entry, suitable for full icon re-extraction.
+pub fn get_all_app_icon_targets(
+    conn: &Connection,
+) -> Result<Vec<(String, String, String)>, rusqlite::Error> {
+    let mut stmt = conn.prepare(
+        "SELECT id, exe_path, COALESCE(item_type, 'app') FROM apps
+         WHERE item_type IS NULL OR item_type IN ('app', 'file', 'folder')",
+    )?;
+    let rows = stmt
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+            ))
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(rows)
+}
+
+pub fn get_icon_cache_path(
+    conn: &Connection,
+    app_id: &str,
+) -> Result<Option<String>, rusqlite::Error> {
+    let mut stmt = conn.prepare("SELECT icon_cache_path FROM apps WHERE id = ?1")?;
+    let mut rows = stmt.query_map(params![app_id], |row| row.get::<_, Option<String>>(0))?;
+    Ok(rows.next().transpose()?.flatten())
+}
+
 pub fn is_exe_path_registered(conn: &Connection, exe_path: &str) -> Result<bool, rusqlite::Error> {
     let count: i64 = conn.query_row(
         "SELECT COUNT(*) FROM apps WHERE exe_path = ?1",

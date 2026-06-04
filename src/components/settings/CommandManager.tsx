@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback } from "react";
 import type { AppEntry } from "../../lib/types";
 import * as api from "../../lib/tauri";
+import type { Shell } from "../../lib/tauri";
+import CommandIcon, { parseCommandExePath } from "../launcher/CommandIcon";
 
 interface EditState {
   mode: "add" | "edit";
@@ -9,6 +11,7 @@ interface EditState {
   cmd: string;
   admin: boolean;
   keepOpen: boolean;
+  shell: Shell;
 }
 
 const EMPTY_EDIT: EditState = {
@@ -17,6 +20,7 @@ const EMPTY_EDIT: EditState = {
   cmd: "",
   admin: false,
   keepOpen: true,
+  shell: "cmd",
 };
 
 function CommandManager() {
@@ -58,6 +62,7 @@ function CommandManager() {
         cmd: data.cmd,
         admin: data.admin,
         keepOpen: data.keep_open,
+        shell: data.shell ?? "cmd",
       });
     } catch (e) {
       console.error("Failed to load command data:", e);
@@ -78,11 +83,18 @@ function CommandManager() {
           edit.name.trim(),
           edit.cmd,
           edit.admin,
-          edit.keepOpen
+          edit.keepOpen,
+          edit.shell
         );
         showToast("コマンドを登録しました");
       } else if (edit.id) {
-        await api.updateCommand(edit.id, edit.cmd, edit.admin, edit.keepOpen);
+        await api.updateCommand(
+          edit.id,
+          edit.cmd,
+          edit.admin,
+          edit.keepOpen,
+          edit.shell
+        );
         // If name changed, also rename
         const original = items.find((i) => i.id === edit.id);
         if (original && original.name !== edit.name.trim()) {
@@ -204,14 +216,14 @@ function CommandManager() {
           onClick={() => !saving && setEdit(null)}
         >
           <div
-            className="w-full max-w-xl bg-white dark:bg-gray-800 rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-700 p-5 space-y-4"
+            className="w-full max-w-xl max-h-[calc(100vh-2rem)] flex flex-col bg-white dark:bg-gray-800 rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-700 overflow-hidden"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="text-base font-semibold text-gray-900 dark:text-gray-100">
+            <div className="text-base font-semibold text-gray-900 dark:text-gray-100 px-5 pt-5 pb-3 shrink-0">
               {edit.mode === "add" ? "コマンドを追加" : "コマンドを編集"}
             </div>
 
-            <div className="space-y-3">
+            <div className="flex-1 min-h-0 space-y-3 px-5 pb-3 overflow-y-auto">
               <div>
                 <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
                   名前
@@ -228,18 +240,59 @@ function CommandManager() {
 
               <div>
                 <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
-                  コマンド（1行1コマンド、空行・<code>::</code> / <code>REM</code> で始まる行はスキップ）
+                  シェル
+                </label>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setEdit({ ...edit, shell: "cmd" })}
+                    className={`flex-1 px-3 py-2 text-xs rounded-lg border transition-colors ${
+                      edit.shell === "cmd"
+                        ? "bg-blue-500 text-white border-blue-500"
+                        : "bg-gray-100 dark:bg-gray-900 text-gray-700 dark:text-gray-300 border-gray-200 dark:border-gray-700 hover:bg-gray-200 dark:hover:bg-gray-800"
+                    }`}
+                  >
+                    CMD
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEdit({ ...edit, shell: "pwsh" })}
+                    className={`flex-1 px-3 py-2 text-xs rounded-lg border transition-colors ${
+                      edit.shell === "pwsh"
+                        ? "bg-blue-500 text-white border-blue-500"
+                        : "bg-gray-100 dark:bg-gray-900 text-gray-700 dark:text-gray-300 border-gray-200 dark:border-gray-700 hover:bg-gray-200 dark:hover:bg-gray-800"
+                    }`}
+                  >
+                    PowerShell
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                  コマンド
+                  {edit.shell === "cmd" && (
+                    <span className="ml-1 text-gray-400 dark:text-gray-500 font-normal">
+                      （空行・<code>::</code> / <code>REM</code> で始まる行はスキップ）
+                    </span>
+                  )}
                 </label>
                 <textarea
                   value={edit.cmd}
                   onChange={(e) => setEdit({ ...edit, cmd: e.target.value })}
-                  placeholder={"cd C:\\path\\to\\project\nnpm run build"}
+                  placeholder={
+                    edit.shell === "pwsh"
+                      ? "Set-Location 'C:\\path\\to\\project'\nGet-ChildItem"
+                      : "cd C:\\path\\to\\project\nnpm run build"
+                  }
                   rows={8}
                   spellCheck={false}
                   className="w-full px-3 py-2 text-sm font-mono bg-gray-100 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg text-gray-900 dark:text-gray-100 outline-none focus:border-blue-400 resize-y"
                 />
                 <div className="text-[10px] text-gray-500 dark:text-gray-500 mt-1">
-                  内部では <code>cmd.exe</code> で <code>&amp;&amp;</code> 区切りで順次実行されます
+                  {edit.shell === "pwsh"
+                    ? "powershell.exe で実行（-ExecutionPolicy Bypass）"
+                    : "cmd.exe で .bat として実行"}
                 </div>
               </div>
 
@@ -269,7 +322,7 @@ function CommandManager() {
               </div>
             </div>
 
-            <div className="flex justify-end gap-2 pt-2">
+            <div className="flex justify-end gap-2 px-5 py-3 border-t border-gray-100 dark:border-gray-700 shrink-0">
               <button
                 onClick={() => setEdit(null)}
                 disabled={saving}
@@ -300,23 +353,10 @@ interface CommandRowProps {
 }
 
 function CommandRow({ item, onRun, onEdit, onDelete }: CommandRowProps) {
+  const shell = parseCommandExePath(item.exe_path)?.shell ?? "cmd";
   return (
     <div className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors group">
-      <div className="w-8 h-8 rounded-md bg-gray-200 dark:bg-gray-700 flex items-center justify-center shrink-0">
-        <svg
-          className="w-4 h-4 text-gray-600 dark:text-gray-300"
-          fill="none"
-          stroke="currentColor"
-          viewBox="0 0 24 24"
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={2}
-            d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
-          />
-        </svg>
-      </div>
+      <CommandIcon shell={shell} size="sm" />
       <div className="flex-1 min-w-0">
         <div className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
           {item.name}
