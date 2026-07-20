@@ -1,0 +1,60 @@
+version: 2
+
+updates:
+  # フロントエンド (package.json)
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    # 関連パッケージをまとめて1つのPRにし、通知を減らす
+    groups:
+      react:
+        patterns:
+          - "react"
+          - "react-dom"
+          - "@types/react"
+          - "@types/react-dom"
+      tauri-js:
+        patterns:
+          - "@tauri-apps/*"
+      build-tools:
+        patterns:
+          - "vite"
+          - "@vitejs/*"
+          - "typescript"
+          - "tailwindcss"
+          - "postcss"
+          - "autoprefixer"
+    commit-message:
+      prefix: "deps"
+
+  # Rust バックエンド (src-tauri/Cargo.toml)
+  - package-ecosystem: "cargo"
+    directory: "/src-tauri"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    groups:
+      tauri:
+        patterns:
+          - "tauri"
+          - "tauri-*"
+      windows:
+        patterns:
+          - "windows"
+          - "pelite"
+    commit-message:
+      prefix: "deps(rust)"
+
+  # GitHub Actions のバージョン更新
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: "ci"

@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: セキュリティ脆弱性の報告
+    url: https://github.com/nanogram-inc/nanogram-desktop-launcher/security/advisories/new
+    about: 脆弱性は公開 Issue ではなく、こちらから非公開でご報告ください
+  - name: 質問・使い方の相談
+    url: https://github.com/nanogram-inc/nanogram-desktop-launcher/discussions
+    about: バグ報告や機能提案ではない質問は Discussions へ

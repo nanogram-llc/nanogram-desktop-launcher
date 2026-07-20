@@ -1,0 +1,41 @@
+name: 機能リクエスト
+description: 新機能や改善を提案する
+title: "[Feature] "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: 解決したい課題
+      description: どんな場面で困っているかを記入してください
+      placeholder: 登録したフォルダを検索結果から固定エリアに追加できず、毎回設定画面を開く必要がある
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: 提案する機能
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: 代替案・回避策（任意）
+      description: 現状どう回避しているか、他に考えた方法があれば
+
+  - type: dropdown
+    id: scope
+    attributes:
+      label: 対象領域
+      multiple: true
+      options:
+        - ランチャー画面（検索・結果表示）
+        - 固定エリア / 最近使った / よく使う
+        - 設定画面
+        - アプリ・ファイル・フォルダの登録
+        - コマンドアイテム
+        - ホットキー
+        - 外観 / テーマ
+        - その他

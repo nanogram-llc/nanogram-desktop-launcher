@@ -1,0 +1,130 @@
+name: Release
+
+# v1.0.4 のようなタグを push するとビルド → Release 下書き作成まで自動で行う。
+# 手動実行 (workflow_dispatch) の場合はタグ名を入力する。
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "リリースタグ (例: v1.0.4)"
+        required: true
+
+# Release 作成に必要
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.event.inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    # Windows 専用アプリ (windows crate / window-vibrancy) のため windows のみ
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      # Rust の依存ビルドをキャッシュ (2回目以降が大幅に短縮される)
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      # タグと tauri.conf.json の version がズレたまま公開するのを防ぐ
+      - name: Verify version matches tag
+        shell: pwsh
+        run: |
+          $tag = "${{ github.event.inputs.tag || github.ref_name }}"
+          $ver = $tag -replace '^v', ''
+          $conf = (Get-Content src-tauri/tauri.conf.json -Raw | ConvertFrom-Json).version
+          if ($conf -ne $ver) {
+            throw "tauri.conf.json の version ($conf) がタグ ($tag) と一致しません"
+          }
+          Write-Host "version OK: $ver"
+
+      # tsc && vite build → Rust release ビルド → NSIS/MSI バンドル生成
+      - name: Build
+        run: npx tauri build
+
+      # productName にスペースがあるとダウンロードURLが %20 だらけになるため、
+      # 配布アセット名だけハイフン区切りに揃える (winget 登録時に効いてくる)
+      - name: Collect and rename artifacts
+        shell: pwsh
+        run: |
+          $tag = "${{ github.event.inputs.tag || github.ref_name }}"
+          $ver = $tag -replace '^v', ''
+          $out = "release-assets"
+          New-Item -ItemType Directory -Force -Path $out | Out-Null
+
+          $nsis = Get-ChildItem "src-tauri/target/release/bundle/nsis/*-setup.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+          $msi  = Get-ChildItem "src-tauri/target/release/bundle/msi/*.msi" -ErrorAction SilentlyContinue | Select-Object -First 1
+          $exe  = "src-tauri/target/release/nanogramLauncher.exe"
+
+          if (-not $nsis) { throw "NSIS installer が見つかりません" }
+          if (-not $msi)  { throw "MSI が見つかりません" }
+          if (-not (Test-Path $exe)) { throw "portable exe が見つかりません: $exe" }
+
+          $base = "nanogram-desktop-launcher-$ver-x64"
+          Copy-Item $nsis.FullName "$out/$base-setup.exe"
+          Copy-Item $msi.FullName  "$out/$base.msi"
+          Copy-Item $exe           "$out/$base-portable.exe"
+
+          # リリースノート (SHA256 は winget マニフェスト作成時にそのまま使える)
+          $notes = @()
+          $notes += '## インストール'
+          $notes += ''
+          $notes += '| ファイル | 用途 |'
+          $notes += '|---|---|'
+          $notes += ('| `' + $base + '-setup.exe` | インストーラー (NSIS)。通常はこちら |')
+          $notes += ('| `' + $base + '.msi` | MSI 版 (社内配布 / GPO 向け) |')
+          $notes += ('| `' + $base + '-portable.exe` | ポータブル版。EXE の隣に設定 / DB / アイコンを作成 |')
+          $notes += ''
+          $notes += '> 未署名のため、初回起動時に SmartScreen の警告が表示されることがあります。'
+          $notes += ''
+          $notes += '### SHA256'
+          $notes += ''
+          $notes += '| ファイル | SHA256 |'
+          $notes += '|---|---|'
+          foreach ($f in Get-ChildItem $out | Sort-Object Name) {
+            $h = (Get-FileHash $f.FullName -Algorithm SHA256).Hash
+            $notes += ('| `' + $f.Name + '` | `' + $h + '` |')
+          }
+          $notes -join "`n" | Out-File -FilePath notes.md -Encoding utf8
+
+          Write-Host "--- assets ---"
+          Get-ChildItem $out | Select-Object Name, Length | Format-Table -AutoSize
+
+      # 内容を確認してから手動で Publish する運用。自動公開したい場合は --draft を外す
+      - name: Create draft release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $tag = "${{ github.event.inputs.tag || github.ref_name }}"
+          $files = Get-ChildItem release-assets | ForEach-Object { $_.FullName }
+
+          gh release view $tag *> $null
+          if ($LASTEXITCODE -eq 0) {
+            Write-Host "既存の Release にアセットを上書きアップロードします"
+            gh release upload $tag $files --clobber
+          } else {
+            Write-Host "Release を下書きで作成します"
+            gh release create $tag $files --draft --title "nanogram desktop LauncheR $tag" --notes-file notes.md
+          }

@@ -1,7 +1,9 @@
 import { useState, useEffect, useCallback } from "react";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
+import { listen } from "@tauri-apps/api/event";
 import type { AppEntry } from "../../lib/types";
 import * as api from "../../lib/tauri";
+import { addPinnedItem, getPinState } from "../../lib/pin";
 import AppRow from "./AppRow";
 
 interface ItemTableProps {
@@ -17,6 +19,8 @@ function ItemTable({ itemType, label, dropHint }: ItemTableProps) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [toast, setToast] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
+  const [pinnedIds, setPinnedIds] = useState<Set<string>>(new Set());
+  const [pinFull, setPinFull] = useState(false);
 
   const showToast = (msg: string) => {
     setToast(msg);
@@ -32,9 +36,47 @@ function ItemTable({ itemType, label, dropHint }: ItemTableProps) {
     }
   }, [itemType]);
 
+  const loadPinState = useCallback(async () => {
+    try {
+      const { pinned, full } = await getPinState();
+      setPinnedIds(pinned);
+      setPinFull(full);
+    } catch (e) {
+      console.error("Failed to load pin state:", e);
+    }
+  }, []);
+
   useEffect(() => {
     loadItems();
-  }, [loadItems]);
+    loadPinState();
+  }, [loadItems, loadPinState]);
+
+  // 固定状態は他ウィンドウ（ランチャー）からの変更でも更新する
+  useEffect(() => {
+    const unlisten = listen("settings-changed", () => {
+      loadPinState();
+    });
+    return () => {
+      unlisten.then((fn) => fn());
+    };
+  }, [loadPinState]);
+
+  const handlePin = useCallback(async (id: string) => {
+    try {
+      const result = await addPinnedItem(id);
+      if (result === "added") {
+        showToast("固定エリアに追加しました");
+      } else if (result === "already") {
+        showToast("すでに固定済みです");
+      } else {
+        showToast("固定エリアが満杯です");
+      }
+      await loadPinState();
+    } catch (e) {
+      console.error("Failed to pin item:", e);
+      showToast("固定に失敗しました");
+    }
+  }, [loadPinState]);
 
   // Drag & drop
   useEffect(() => {
@@ -239,6 +281,9 @@ function ItemTable({ itemType, label, dropHint }: ItemTableProps) {
               onRemove={handleDelete}
               onLaunch={handleLaunch}
               removeMode="delete"
+              onPin={handlePin}
+              isPinned={pinnedIds.has(item.id)}
+              pinFull={pinFull}
             />
           ))
         )}

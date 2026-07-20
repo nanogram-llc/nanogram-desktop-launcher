@@ -11,6 +11,12 @@ interface AppRowProps {
   onLaunch: (appId: string) => void;
   /** "exclude" = hide icon, "include" = eye icon, "delete" = trash icon */
   removeMode: "exclude" | "include" | "delete";
+  /** 指定時、固定エリア追加ボタンを表示する */
+  onPin?: (appId: string) => void;
+  /** 既に固定済みか */
+  isPinned?: boolean;
+  /** 固定エリアが満杯か */
+  pinFull?: boolean;
 }
 
 function AppRow({
@@ -22,6 +28,9 @@ function AppRow({
   onRemove,
   onLaunch,
   removeMode,
+  onPin,
+  isPinned,
+  pinFull,
 }: AppRowProps) {
   const [editing, setEditing] = useState(false);
   const [editName, setEditName] = useState(app.name);
@@ -101,6 +110,26 @@ function AppRow({
 
         {/* Actions */}
         <div className="flex items-center gap-1 shrink-0">
+          {/* Pin to pinned area */}
+          {onPin && (
+            <button
+              onClick={() => onPin(app.id)}
+              disabled={isPinned || pinFull}
+              className={`p-1 transition-colors ${
+                isPinned
+                  ? "text-blue-500 cursor-default"
+                  : pinFull
+                    ? "text-gray-300 dark:text-gray-600 cursor-not-allowed"
+                    : "text-gray-400 hover:text-blue-500"
+              }`}
+              title={isPinned ? "固定済み" : pinFull ? "固定エリアが満杯です" : "固定エリアに追加"}
+            >
+              <svg className="w-3.5 h-3.5" fill={isPinned ? "currentColor" : "none"} stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
+              </svg>
+            </button>
+          )}
+
           {/* Launch */}
           {removeMode !== "include" && (
             <button

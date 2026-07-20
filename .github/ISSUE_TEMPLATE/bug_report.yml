@@ -1,0 +1,83 @@
+name: バグ報告
+description: 不具合を報告する
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        報告ありがとうございます。再現に必要な情報をご記入ください。
+        **セキュリティ上の問題は Issue ではなく [Security Advisories](../../security/advisories/new) からご報告ください。**
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: 症状
+      description: 何が起きたかを簡潔に記入してください
+      placeholder: フォルダをドラッグ&ドロップすると固定エリアの内容が消える
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: 再現手順
+      description: 手順を番号付きで記入してください
+      placeholder: |
+        1. アプリを固定エリアに数件ピン留めする
+        2. ランチャー画面にフォルダをドロップする
+        3. 固定エリアを確認する
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: 期待する動作
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: バージョン
+      description: 設定画面の「情報」タブ、または EXE のプロパティで確認できます
+      placeholder: "1.0.4"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: install-type
+    attributes:
+      label: 導入方法
+      options:
+        - インストーラー (NSIS / .exe)
+        - MSI
+        - ポータブル版 (EXE を直接配置)
+        - ソースからビルド
+    validations:
+      required: true
+
+  - type: input
+    id: os
+    attributes:
+      label: Windows のバージョン
+      placeholder: "Windows 11 Pro 24H2 (26100)"
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: 環境の補足（任意）
+      description: マルチモニター構成、DPI スケーリング、EXE の配置場所（クラウド同期フォルダかどうか）など
+      placeholder: |
+        - モニター: 2枚 (150% / 100%)
+        - EXE の場所: Dropbox 同期フォルダ内
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: ログ（任意）
+      description: 設定でデバッグログを有効にすると出力されます。長い場合は該当部分のみ貼ってください
+      render: text

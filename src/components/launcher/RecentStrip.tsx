@@ -397,6 +397,18 @@ function RecentStrip({
           >
             タグ編集
           </button>
+          {(menuState.app.item_type === "app" || menuState.app.item_type == null || menuState.app.item_type === "file") && (
+            <button
+              className="w-full px-3 py-1.5 text-xs text-left text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+              onClick={() => {
+                const app = menuState.app;
+                setMenuState(null);
+                api.revealInExplorer(app.id).catch(console.error);
+              }}
+            >
+              アプリの場所を開く
+            </button>
+          )}
           {menuState.isPinned ? (
             <button
               className="w-full px-3 py-1.5 text-xs text-left text-orange-600 dark:text-orange-400 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"

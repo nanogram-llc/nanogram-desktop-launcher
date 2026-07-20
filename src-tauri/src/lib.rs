@@ -686,6 +686,7 @@ pub fn run() {
             commands::apps::open_item,
             commands::apps::launch_app_as_admin,
             commands::apps::open_folder_with,
+            commands::apps::reveal_in_explorer,
             commands::apps::register_command,
             commands::apps::update_command,
             commands::apps::get_command_data,

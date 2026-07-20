@@ -3,9 +3,10 @@ import type { AppEntry, Folder, Settings, ScanMode, EvacStatus, MergeResult } fr
 
 export async function getApps(
   query: string | null,
-  limit: number
+  limit: number,
+  includeItems: boolean = false
 ): Promise<AppEntry[]> {
-  return invoke("get_apps", { query, limit });
+  return invoke("get_apps", { query, limit, includeItems });
 }
 
 export async function launchApp(appId: string): Promise<void> {
@@ -158,6 +159,10 @@ export async function openItem(appId: string): Promise<void> {
 
 export async function openFolderWith(folderPath: string, program: string): Promise<void> {
   return invoke("open_folder_with", { folderPath, program });
+}
+
+export async function revealInExplorer(appId: string): Promise<void> {
+  return invoke("reveal_in_explorer", { appId });
 }
 
 export async function openSettingsFile(): Promise<void> {

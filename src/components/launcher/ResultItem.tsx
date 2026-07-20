@@ -188,6 +188,17 @@ function ResultItem({ app, isSelected, onLaunch, onExclude, onSetTags, onPin, pi
           >
             タグ編集
           </button>
+          {(app.item_type === "app" || app.item_type == null || app.item_type === "file") && (
+            <button
+              className="w-full px-3 py-1.5 text-xs text-left text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+              onClick={() => {
+                setMenuPos(null);
+                api.revealInExplorer(app.id).catch(console.error);
+              }}
+            >
+              アプリの場所を開く
+            </button>
+          )}
           {app.item_type === "folder" && (
             <>
               <button

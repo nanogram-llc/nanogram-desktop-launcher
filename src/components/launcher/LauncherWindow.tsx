@@ -106,7 +106,7 @@ function LauncherWindow() {
 
   const loadRecentFrequent = useCallback(async (cols: number, rows: number, pIds: string[]) => {
     try {
-      const apps = await api.getApps(null, 100);
+      const apps = await api.getApps(null, 100, true);
       const recent = apps
         .filter((a) => a.last_launched)
         .sort((a, b) => (b.last_launched ?? 0) - (a.last_launched ?? 0))
@@ -249,7 +249,18 @@ function LauncherWindow() {
 
         if (totalCount > 0) {
           showToast(`${msgs.join("、")} を登録しました`);
-          loadRecentFrequent(pinnedColumns, pinnedRows, pinnedIds);
+          // settingsRef から最新値を読む。この effect は [loadRecentFrequent]
+          // のみを依存に持つためマウント時の pinnedIds([]) 等を捕捉しており、
+          // それを渡すと loadRecentFrequent が固定アイテムを空として
+          // 永続化してしまう（固定アプリ全消え）バグになる。
+          const s = settingsRef.current;
+          if (s) {
+            loadRecentFrequent(s.pinned_columns || 9, s.pinned_rows || 2, s.pinned_items || []);
+          } else {
+            api.getSettings()
+              .then((fs) => loadRecentFrequent(fs.pinned_columns || 9, fs.pinned_rows || 2, fs.pinned_items || []))
+              .catch(() => {});
+          }
         } else {
           showToast("新規の登録対象はありませんでした");
         }
@@ -269,7 +280,7 @@ function LauncherWindow() {
       return;
     }
     const id = ++searchIdRef.current;
-    api.getApps(query, maxResults).then((r) => {
+    api.getApps(query, maxResults, true).then((r) => {
       if (id === searchIdRef.current) {
         setResults(r);
         setSelectedIndex(0);

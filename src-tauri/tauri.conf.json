@@ -1,7 +1,7 @@
 {
   "$schema": "https://raw.githubusercontent.com/nicegui-org/nicegui/main/tauri/tauri.conf.json",
   "productName": "nanogram desktop LauncheR",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "identifier": "com.launcher.app",
   "build": {
     "frontendDist": "../dist",

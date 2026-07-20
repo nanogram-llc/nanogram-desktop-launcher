@@ -93,6 +93,17 @@ pub fn get_all_apps(conn: &Connection) -> Result<Vec<AppEntry>, rusqlite::Error>
     parse_app_rows(&mut stmt, [])
 }
 
+/// Like get_all_apps but also includes registered files/folders so the
+/// launcher can search, rank, and pin them. The settings "apps" tab keeps
+/// using get_all_apps to avoid mixing item types.
+pub fn get_all_launchable(conn: &Connection) -> Result<Vec<AppEntry>, rusqlite::Error> {
+    let mut stmt = conn.prepare(
+        "SELECT id, name, exe_path, folder_id, icon_cache_path, tags, launch_count, last_launched, is_excluded, is_renamed, created_at, item_type
+         FROM apps WHERE is_excluded = 0 AND (item_type = 'app' OR item_type = 'command' OR item_type = 'file' OR item_type = 'folder' OR item_type IS NULL) ORDER BY launch_count DESC, last_launched DESC"
+    )?;
+    parse_app_rows(&mut stmt, [])
+}
+
 #[allow(dead_code)]
 pub fn get_apps_by_folder(
     conn: &Connection,

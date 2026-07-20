@@ -13,10 +13,15 @@ pub async fn get_apps(
     state: State<'_, AppState>,
     query: Option<String>,
     limit: u32,
+    include_items: Option<bool>,
 ) -> Result<Vec<AppEntry>, String> {
     let mut apps = {
         let conn = state.lock_db()?;
-        queries::get_all_apps(&conn).map_err(|e| e.to_string())?
+        if include_items.unwrap_or(false) {
+            queries::get_all_launchable(&conn).map_err(|e| e.to_string())?
+        } else {
+            queries::get_all_apps(&conn).map_err(|e| e.to_string())?
+        }
     };
 
     let mut result = match query {
@@ -1077,6 +1082,52 @@ pub async fn launch_app_as_admin(
 
     #[cfg(not(target_os = "windows"))]
     return Err("Admin launch is only supported on Windows".to_string());
+
+    Ok(())
+}
+
+/// Reveal an app's executable in Explorer (opens the containing directory
+/// with the file selected). Resolves .lnk shortcuts to their target exe first.
+#[tauri::command]
+pub async fn reveal_in_explorer(
+    state: State<'_, AppState>,
+    app_id: String,
+) -> Result<(), String> {
+    let exe_path = {
+        let conn = state.lock_db()?;
+        queries::get_app_exe_path(&conn, &app_id)
+            .map_err(|e| e.to_string())?
+            .ok_or_else(|| "App not found".to_string())?
+    };
+
+    // Resolve .lnk shortcut to its actual target exe so we reveal the real file
+    let target = {
+        let p = std::path::Path::new(&exe_path);
+        let ext = p.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
+        if ext == "lnk" {
+            crate::scanner::resolve_single_lnk(p)
+                .map(|a| a.exe_path)
+                .unwrap_or(exe_path)
+        } else {
+            exe_path
+        }
+    };
+
+    if !std::path::Path::new(&target).exists() {
+        return Err(format!("File not found: {}", target));
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        std::process::Command::new("explorer")
+            .raw_arg(format!("/select,\"{}\"", target))
+            .spawn()
+            .map_err(|e| format!("Failed to open Explorer: {}", e))?;
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    return Err("Reveal in Explorer is only supported on Windows".to_string());
 
     Ok(())
 }
