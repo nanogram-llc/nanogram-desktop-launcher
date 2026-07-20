@@ -1,6 +1,6 @@
 [package]
 name = "launcher"
-version = "1.0.4"
+version = "1.0.5"
 description = "nanogram desktop LauncheR"
 edition = "2021"
 
