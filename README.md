@@ -1,4 +1,4 @@
-# NANOGRAM Launcher
+# nanogram desktop LauncheR
 
 Windows向けの高速デスクトップアプリランチャー。Tauri v2 + React + Rust で構築。
 
@@ -11,7 +11,7 @@ Windows向けの高速デスクトップアプリランチャー。Tauri v2 + Re
 
 ## 概要
 
-NANOGRAM Launcher は、キーボード操作を中心とした軽量・高速なアプリケーションランチャーです。Ctrl キーのダブルタップで即座に起動し、インクリメンタル検索でアプリを素早く見つけて起動できます。
+nanogram desktop LauncheR は、キーボード操作を中心とした軽量・高速なアプリケーションランチャーです。Ctrl キーのダブルタップで即座に起動し、インクリメンタル検索でアプリを素早く見つけて起動できます。
 
 フレームレスの透過ウィンドウでデスクトップに自然に溶け込み、フォーカスを失うと自動的に非表示になるため、作業の邪魔になりません。
 
@@ -29,7 +29,7 @@ NANOGRAM Launcher は、キーボード操作を中心とした軽量・高速�
 
 ## スクリーンショット
 
-> （スクリーンショットをここに追加）
+![nanogram desktop LauncheR のランチャー画面](docs/screenshot.avif)
 
 ## インストール
 
