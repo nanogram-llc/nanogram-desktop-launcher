@@ -66,10 +66,9 @@ export async function resizeWindow(cols: number, totalRows: number, sectionCount
 export async function setLauncherSize(
   cols: number,
   cssHeight: number,
-  dpr: number,
-  overflow = 0
+  dpr: number
 ): Promise<void> {
-  return invoke("set_launcher_size", { cols, height: cssHeight, dpr, overflow });
+  return invoke("set_launcher_size", { cols, height: cssHeight, dpr });
 }
 
 export async function removeFolder(folderId: string): Promise<void> {

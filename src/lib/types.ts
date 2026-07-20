@@ -72,8 +72,6 @@ export interface Settings {
   background_dim: number;
   /** Background image zoom, 100-300 (%). Above 100 crops to the window. */
   background_scale: number;
-  /** Transparent bleed around the card so the image can extend past it, 0-200px. */
-  background_overflow: number;
   /** Launcher window opacity, 50-100. 100 = fully opaque. */
   window_opacity: number;
   /** Launcher text colour. */

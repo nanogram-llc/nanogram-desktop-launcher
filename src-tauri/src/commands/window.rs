@@ -58,12 +58,8 @@ pub async fn set_launcher_size(
     cols: u32,
     height: u32,
     dpr: f64,
-    // `overflow` is the transparent bleed around the card, added to both sides.
-    // The webview reports a height that already includes it, so only the width
-    // is grown here.
-    overflow: Option<u32>,
 ) -> Result<(), String> {
-    let width_css = cols * 66 + 32 + overflow.unwrap_or(0) * 2;
+    let width_css = cols * 66 + 32;
     let dpr = if dpr.is_finite() && dpr > 0.0 { dpr } else { 1.0 };
 
     if let Ok(mut ls) = state.window_logical_size.lock() {
