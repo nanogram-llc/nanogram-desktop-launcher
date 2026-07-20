@@ -2,10 +2,10 @@
 
 Windows向けの高速デスクトップアプリランチャー。Tauri v2 + React + Rust で構築。
 
-[![Release](https://img.shields.io/github/v/release/nanogram-inc/nanogram-desktop-launcher?display_name=tag&sort=semver)](https://github.com/nanogram-inc/nanogram-desktop-launcher/releases/latest)
-[![Build](https://github.com/nanogram-inc/nanogram-desktop-launcher/actions/workflows/release.yml/badge.svg)](https://github.com/nanogram-inc/nanogram-desktop-launcher/actions/workflows/release.yml)
+[![Release](https://img.shields.io/github/v/release/nanogram-llc/nanogram-desktop-launcher?display_name=tag&sort=semver)](https://github.com/nanogram-llc/nanogram-desktop-launcher/releases/latest)
+[![Build](https://github.com/nanogram-llc/nanogram-desktop-launcher/actions/workflows/release.yml/badge.svg)](https://github.com/nanogram-llc/nanogram-desktop-launcher/actions/workflows/release.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Platform](https://img.shields.io/badge/platform-Windows%2010%20%7C%2011-0078D4)](https://github.com/nanogram-inc/nanogram-desktop-launcher/releases/latest)
+[![Platform](https://img.shields.io/badge/platform-Windows%2010%20%7C%2011-0078D4)](https://github.com/nanogram-llc/nanogram-desktop-launcher/releases/latest)
 
 ---
 
@@ -37,7 +37,7 @@ nanogram desktop LauncheR は、キーボード操作を中心とした軽量・
 
 **動作環境**: Windows 10 / 11 (x64)
 
-[**Releases**](https://github.com/nanogram-inc/nanogram-desktop-launcher/releases/latest) から用途に応じて選んでください。
+[**Releases**](https://github.com/nanogram-llc/nanogram-desktop-launcher/releases/latest) から用途に応じて選んでください。
 
 | ファイル | 用途 |
 |---|---|
@@ -110,13 +110,13 @@ CARGO_TARGET_DIR="C:/tmp/launcher-target" npx tauri build
 
 ## 更新履歴
 
-各バージョンの変更内容とダウンロードは [Releases](https://github.com/nanogram-inc/nanogram-desktop-launcher/releases) を参照してください。
+各バージョンの変更内容とダウンロードは [Releases](https://github.com/nanogram-llc/nanogram-desktop-launcher/releases) を参照してください。
 過去バージョンを含む履歴の一覧は [MANUAL.md の更新履歴](MANUAL.md#更新履歴) にも記載しています。
 
 ## コントリビュート
 
-- バグ報告・機能提案は [Issues](https://github.com/nanogram-inc/nanogram-desktop-launcher/issues) からテンプレートに沿ってお願いします
-- 脆弱性は Issue ではなく [Security Advisories](https://github.com/nanogram-inc/nanogram-desktop-launcher/security/advisories/new) から非公開でご報告ください（[SECURITY.md](SECURITY.md)）
+- バグ報告・機能提案は [Issues](https://github.com/nanogram-llc/nanogram-desktop-launcher/issues) からテンプレートに沿ってお願いします
+- 脆弱性は Issue ではなく [Security Advisories](https://github.com/nanogram-llc/nanogram-desktop-launcher/security/advisories/new) から非公開でご報告ください（[SECURITY.md](SECURITY.md)）
 
 ## ライセンス
 
