@@ -121,6 +121,7 @@ function GeneralSettings({ onThemeChange }: GeneralSettingsProps) {
     background_image: "",
     background_dim: 40,
     background_scale: 100,
+    background_overflow: 0,
     window_opacity: 100,
     text_color: "auto",
     text_custom: "#ffffff",
@@ -401,6 +402,24 @@ function GeneralSettings({ onThemeChange }: GeneralSettingsProps) {
                 step={10}
                 value={settings.background_scale}
                 onChange={(e) => update({ background_scale: parseInt(e.target.value) })}
+                className="w-full accent-input"
+              />
+            </div>
+
+            <div>
+              <div className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                枠外へのはみ出し: {settings.background_overflow}px
+              </div>
+              <div className="text-xs text-gray-500 dark:text-gray-400 mb-2">
+                ウィンドウを広げて周囲を透明にし、画像をカードの外側まで広げます。はみ出した部分はクリックできません
+              </div>
+              <input
+                type="range"
+                min={0}
+                max={200}
+                step={10}
+                value={settings.background_overflow}
+                onChange={(e) => update({ background_overflow: parseInt(e.target.value) })}
                 className="w-full accent-input"
               />
             </div>

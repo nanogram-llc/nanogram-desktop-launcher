@@ -20,6 +20,9 @@ function LauncherWindow({ themeVersion = 0 }: LauncherWindowProps) {
   const [backgroundDim, setBackgroundDim] = useState(40);
   const [backgroundScale, setBackgroundScale] = useState(100);
   const [surfaceOpacity, setSurfaceOpacity] = useState(1);
+  // Transparent margin around the card, in CSS px, so a background image can
+  // spill past the card's frame. Only meaningful when an image is set.
+  const [bleed, setBleed] = useState(0);
   const [results, setResults] = useState<AppEntry[]>([]);
   const [recentApps, setRecentApps] = useState<AppEntry[]>([]);
   const [frequentApps, setFrequentApps] = useState<AppEntry[]>([]);
@@ -95,19 +98,22 @@ function LauncherWindow({ themeVersion = 0 }: LauncherWindowProps) {
     // Only resize the window when layout-affecting settings actually
     // changed; otherwise we'd undo the ResizeObserver's measurement on
     // every launcher-show.
+    const bleedPx = s.background_image ? (s.background_overflow || 0) : 0;
+    setBleed(bleedPx);
     const visibleSections = secs.filter((sec) => sec.visible);
     const sectionCount = visibleSections.length;
     const pinnedVisible = visibleSections.some((sec) => sec.id === "pinned");
     const extraRows = sectionCount - (pinnedVisible ? 1 : 0);
     const totalRows = extraRows + (pinnedVisible ? rows : 0);
-    const sig = `${cols}-${rows}-${sectionCount}-${pinnedVisible ? 1 : 0}`;
+    const sig = `${cols}-${rows}-${sectionCount}-${pinnedVisible ? 1 : 0}-${bleedPx}`;
     if (sig !== layoutSigRef.current) {
       const formulaH = totalRows * 72 + sectionCount * 28 + 128;
       // Prefer the last measured content height; fall back to formula
       // only on the very first call before ResizeObserver has run.
-      const h = measuredHRef.current ?? formulaH;
+      // measuredHRef holds the card height only, so the bleed is added here.
+      const h = (measuredHRef.current ?? formulaH) + bleedPx * 2;
       api
-        .setLauncherSize(cols, h, window.devicePixelRatio)
+        .setLauncherSize(cols, h, window.devicePixelRatio, bleedPx)
         .catch(console.error);
       layoutSigRef.current = sig;
     }
@@ -571,12 +577,14 @@ function LauncherWindow({ themeVersion = 0 }: LauncherWindowProps) {
     const update = () => {
       if (!contentRef.current) return;
       const rect = contentRef.current.getBoundingClientRect();
-      const cssH = Math.ceil(rect.height) + 2;
+      const cardH = Math.ceil(rect.height) + 2;
       const cols = settingsRef.current?.pinned_columns ?? pinnedColumns;
-      if (cssH > 0 && cols > 0) {
-        measuredHRef.current = cssH;
+      if (cardH > 0 && cols > 0) {
+        // Store the card height on its own; the bleed is layered on top so a
+        // change to either recomputes correctly.
+        measuredHRef.current = cardH;
         api
-          .setLauncherSize(cols, cssH, window.devicePixelRatio)
+          .setLauncherSize(cols, cardH + bleed * 2, window.devicePixelRatio, bleed)
           .catch(() => {});
       }
     };
@@ -584,19 +592,18 @@ function LauncherWindow({ themeVersion = 0 }: LauncherWindowProps) {
     const observer = new ResizeObserver(update);
     observer.observe(el);
     return () => observer.disconnect();
-  }, [pinnedColumns]);
+  }, [pinnedColumns, bleed]);
 
   return (
     <div
-      className="launcher-surface w-full h-full rounded-2xl overflow-hidden border border-white/20 dark:border-white/10 shadow-2xl relative backdrop-blur-xl"
-      data-tauri-drag-region
+      className="w-full h-full relative"
+      style={bleed ? { padding: bleed } : undefined}
     >
-      {/* Background image layer + dimming veil. Sits behind everything and
-          never intercepts clicks. `overflow-hidden` crops the image to the
-          window, so a scale above 100% frames a detail rather than shrinking
-          the whole picture to fit. */}
+      {/* Background image layer + dimming veil. Lives in the outer container so
+          that with a bleed the image extends past the card into the window's
+          transparent margin. Never intercepts clicks. */}
       {bgImage && (
-        <div className="absolute inset-0 -z-10 pointer-events-none rounded-2xl overflow-hidden">
+        <div className="absolute inset-0 z-0 pointer-events-none overflow-hidden rounded-2xl">
           <div
             className="absolute inset-0 bg-center bg-no-repeat"
             style={{
@@ -611,6 +618,11 @@ function LauncherWindow({ themeVersion = 0 }: LauncherWindowProps) {
           />
         </div>
       )}
+
+    <div
+      className="launcher-surface w-full h-full rounded-2xl overflow-hidden border border-white/20 dark:border-white/10 shadow-2xl relative z-10 backdrop-blur-xl"
+      data-tauri-drag-region
+    >
 
       {/* Toast */}
       {toast && (
@@ -736,6 +748,7 @@ function LauncherWindow({ themeVersion = 0 }: LauncherWindowProps) {
           </svg>
         </button>
       </div>
+    </div>
     </div>
   );
 }

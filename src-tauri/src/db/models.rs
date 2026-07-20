@@ -119,6 +119,11 @@ pub struct Settings {
     /// Background image zoom, 100-300 (%). Above 100 the image is cropped by
     /// the window, letting the user frame a detail.
     pub background_scale: u32,
+    /// How far the background image bleeds past the launcher card, in logical
+    /// pixels (0-200). The OS window is grown by this much on every side and the
+    /// surrounding area left transparent, so the image can extend beyond the
+    /// card's rounded frame.
+    pub background_overflow: u32,
     /// Launcher window opacity, 50-100. 100 = fully opaque.
     pub window_opacity: u32,
     /// Launcher text colour: "auto" | "light" | "dark" | "custom"
@@ -157,6 +162,7 @@ impl Default for Settings {
             background_image: String::new(),
             background_dim: 40,
             background_scale: 100,
+            background_overflow: 0,
             window_opacity: 100,
             text_color: "auto".to_string(),
             text_custom: "#ffffff".to_string(),
