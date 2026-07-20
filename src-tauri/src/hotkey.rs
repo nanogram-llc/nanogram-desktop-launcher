@@ -1,11 +1,15 @@
 use crate::dlog;
-use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU8, Ordering};
 use tauri::{AppHandle, Emitter, Manager};
 
 /// Target key for double-tap: 0=Control, 1=Alt, 2=Shift
 static DOUBLE_TAP_TARGET: AtomicU8 = AtomicU8::new(0);
 /// When true, double-tap polling is disabled (combo mode active)
 static DOUBLE_TAP_DISABLED: AtomicBool = AtomicBool::new(false);
+/// Consecutive taps required to fire (2 = double-tap, 3 = triple-tap)
+static TAP_COUNT: AtomicU8 = AtomicU8::new(2);
+/// Max gap between taps in milliseconds
+static TAP_INTERVAL_MS: AtomicU32 = AtomicU32::new(400);
 
 pub fn set_hook_target_key(hotkey: &str) {
     let val = match hotkey {
@@ -14,6 +18,13 @@ pub fn set_hook_target_key(hotkey: &str) {
         _ => 0,
     };
     DOUBLE_TAP_TARGET.store(val, Ordering::Relaxed);
+}
+
+/// Configure how many consecutive taps fire the launcher, and how long a gap
+/// between taps is still considered "consecutive".
+pub fn set_tap_config(taps: u32, interval_ms: u32) {
+    TAP_COUNT.store(taps.clamp(2, 3) as u8, Ordering::Relaxed);
+    TAP_INTERVAL_MS.store(interval_ms.clamp(200, 800), Ordering::Relaxed);
 }
 
 pub struct HotkeyState {
@@ -184,7 +195,16 @@ fn toggle_launcher_win32(app: &AppHandle) {
     }
 }
 
-/// Position the window centered on the cursor's monitor (DPI-aware).
+/// Position the window on the cursor's monitor according to the configured
+/// placement (DPI-aware).
+///
+/// The window size is taken from `GetWindowRect` — the *actual* physical size —
+/// rather than being derived from the stored logical size. `set_launcher_size`
+/// sizes the window using the WebView's `devicePixelRatio`, which does not
+/// always equal `GetDpiForMonitor`'s scale (see the note in commands/window.rs).
+/// Estimating the width from the logical size therefore drifted from reality and
+/// pushed the window off-centre. Only a cross-monitor DPI change needs a
+/// correction, and that is a simple ratio of the two monitors' DPI.
 #[cfg(target_os = "windows")]
 unsafe fn move_and_show(
     hwnd: windows::Win32::Foundation::HWND,
@@ -193,11 +213,11 @@ unsafe fn move_and_show(
 ) {
     use windows::Win32::Foundation::RECT;
     use windows::Win32::Graphics::Gdi::{
-        GetMonitorInfoW, MonitorFromPoint, MONITORINFO, MONITOR_DEFAULTTONEAREST,
+        GetMonitorInfoW, MonitorFromPoint, MonitorFromRect, MONITORINFO, MONITOR_DEFAULTTONEAREST,
     };
     use windows::Win32::UI::HiDpi::{GetDpiForMonitor, MDT_EFFECTIVE_DPI};
     use windows::Win32::UI::WindowsAndMessaging::{
-        SetWindowPos, HWND_TOPMOST, SWP_NOACTIVATE, SWP_NOSIZE,
+        GetWindowRect, SetWindowPos, HWND_TOPMOST, SWP_NOACTIVATE, SWP_NOSIZE,
     };
 
     let hmonitor = MonitorFromPoint(cursor, MONITOR_DEFAULTTONEAREST);
@@ -213,28 +233,54 @@ unsafe fn move_and_show(
     let mon_w = (rc.right - rc.left) as f64;
     let mon_h = (rc.bottom - rc.top) as f64;
 
-    // Get DPI scale for the target monitor
     let mut dpi_x: u32 = 96;
     let mut dpi_y: u32 = 96;
     let _ = GetDpiForMonitor(hmonitor, MDT_EFFECTIVE_DPI, &mut dpi_x, &mut dpi_y);
     let scale = dpi_x as f64 / 96.0;
 
-    // Read stored logical size and convert to physical for this monitor
-    let (lw, lh) = app
-        .state::<crate::AppState>()
-        .window_logical_size
-        .lock()
-        .map(|s| *s)
-        .unwrap_or((680, 460));
-    let phys_w = lw as f64 * scale;
-    let phys_h = lh as f64 * scale;
+    // Actual current size, plus a DPI ratio correction when the window is about
+    // to land on a monitor with a different scale (Windows will rescale it).
+    let mut win_rect = RECT::default();
+    let _ = GetWindowRect(hwnd, &mut win_rect);
+    let cur_monitor = MonitorFromRect(&win_rect, MONITOR_DEFAULTTONEAREST);
+    let mut cur_dpi_x: u32 = 96;
+    let mut cur_dpi_y: u32 = 96;
+    let _ = GetDpiForMonitor(cur_monitor, MDT_EFFECTIVE_DPI, &mut cur_dpi_x, &mut cur_dpi_y);
+    let ratio = if cur_dpi_x > 0 {
+        dpi_x as f64 / cur_dpi_x as f64
+    } else {
+        1.0
+    };
 
-    let x = rc.left as f64 + (mon_w - phys_w) / 2.0;
-    let y = rc.top as f64 + (mon_h - phys_h) / 3.0;
+    let win_w = (win_rect.right - win_rect.left) as f64 * ratio;
+    let win_h = (win_rect.bottom - win_rect.top) as f64 * ratio;
+
+    let (position, margin_logical) = app
+        .state::<crate::AppState>()
+        .window_placement
+        .lock()
+        .map(|p| p.clone())
+        .unwrap_or_else(|_| ("center".to_string(), 40));
+    let margin = margin_logical as f64 * scale;
+
+    let (x, y) = match position.as_str() {
+        "top-left" => (rc.left as f64 + margin, rc.top as f64 + margin),
+        "top-right" => (rc.right as f64 - win_w - margin, rc.top as f64 + margin),
+        "bottom-left" => (rc.left as f64 + margin, rc.bottom as f64 - win_h - margin),
+        "bottom-right" => (
+            rc.right as f64 - win_w - margin,
+            rc.bottom as f64 - win_h - margin,
+        ),
+        // "center" and any unknown value
+        _ => (
+            rc.left as f64 + (mon_w - win_w) / 2.0,
+            rc.top as f64 + (mon_h - win_h) / 2.0,
+        ),
+    };
 
     dlog(&format!(
-        "move_and_show: dpi={} scale={:.2} logical={}x{} phys={:.0}x{:.0} pos=({:.0},{:.0})",
-        dpi_x, scale, lw, lh, phys_w, phys_h, x, y
+        "move_and_show: pos={} dpi={}->{} ratio={:.2} win={:.0}x{:.0} at=({:.0},{:.0})",
+        position, cur_dpi_x, dpi_x, ratio, win_w, win_h, x, y
     ));
 
     let _ = SetWindowPos(
@@ -347,7 +393,7 @@ pub fn unregister_combo_shortcuts(app: &AppHandle) {
     let _ = app.global_shortcut().unregister_all();
 }
 
-/// Apply hotkey setting: set up the right mode (double-tap or combo).
+/// Apply hotkey setting: set up the right mode (multi-tap or combo).
 pub fn apply_hotkey(app: &AppHandle, hotkey: &str) -> Result<(), String> {
     let hs = app.state::<HotkeyState>();
     if is_combo_hotkey(hotkey) {
@@ -380,12 +426,23 @@ pub fn start_keyboard_hook(app_handle: AppHandle) {
 
         let mut was_pressed = false;
         let mut last_release_ms: u64 = 0;
+        // Consecutive clean taps seen so far.
+        let mut taps: u8 = 0;
+        // Set when another key goes down during this press, which means the
+        // modifier is being used as a modifier (Ctrl+C, Ctrl+V, ...) rather
+        // than tapped on its own. Such a press must not count as a tap —
+        // otherwise a Ctrl+C → Ctrl+V sequence reads as a double-tap.
+        let mut contaminated = false;
+        // Keys already down when this press started; anything in here is
+        // ignored for the rest of the press.
+        let mut baseline = [false; 256];
 
         loop {
             std::thread::sleep(std::time::Duration::from_millis(10));
 
             if DOUBLE_TAP_DISABLED.load(Ordering::Relaxed) {
                 was_pressed = false;
+                taps = 0;
                 continue;
             }
 
@@ -402,29 +459,121 @@ pub fn start_keyboard_hook(app_handle: AppHandle) {
                     || (GetAsyncKeyState(vk2.0 as i32) as u16 & 0x8000) != 0
             };
 
+            if pressed && !was_pressed {
+                // Fresh press — start clean and record what's already held.
+                contaminated = false;
+                baseline = snapshot_keys(vk1.0, vk2.0);
+            }
+
+            // Only scan while held, and stop scanning once contaminated: the
+            // verdict can't be reversed for this press, so there is no point
+            // paying for a full scan on every 10ms tick.
+            if pressed && !contaminated && new_key_pressed(&baseline, vk1.0, vk2.0) {
+                contaminated = true;
+            }
+
             if was_pressed && !pressed {
-                // Key was just released — check for double-tap
                 let now_ms = std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
                     .map(|d| d.as_millis() as u64)
                     .unwrap_or(0);
 
-                if last_release_ms > 0 && now_ms - last_release_ms < 400 {
-                    // Double-tap detected!
+                if contaminated {
+                    // Used as a modifier — reset the run entirely.
+                    taps = 0;
                     last_release_ms = 0;
-                    let app_clone = app_handle.clone();
-                    std::thread::spawn(move || {
-                        dlog("poll: double-tap detected");
-                        toggle_launcher(&app_clone);
-                    });
+                    dlog("poll: tap ignored (used with another key)");
                 } else {
+                    let interval = TAP_INTERVAL_MS.load(Ordering::Relaxed) as u64;
+                    if last_release_ms > 0 && now_ms.saturating_sub(last_release_ms) < interval {
+                        taps = taps.saturating_add(1);
+                    } else {
+                        taps = 1;
+                    }
                     last_release_ms = now_ms;
+
+                    let required = TAP_COUNT.load(Ordering::Relaxed);
+                    if taps >= required {
+                        taps = 0;
+                        last_release_ms = 0;
+                        let app_clone = app_handle.clone();
+                        std::thread::spawn(move || {
+                            dlog(&format!("poll: {}-tap detected", required));
+                            toggle_launcher(&app_clone);
+                        });
+                    }
                 }
             }
 
             was_pressed = pressed;
         }
     });
+}
+
+/// Virtual-key ranges scanned to decide whether the modifier is being used in
+/// combination with something else.
+///
+/// Deliberately an allowlist of keys a user can actually press. Scanning the
+/// whole 0x07-0xFE range is not safe: reserved and IME-specific codes can
+/// report "down" permanently — on a Japanese IME setup VK 0xF4 does exactly
+/// that, which made every press look contaminated and stopped the hotkey from
+/// ever firing. Mouse buttons (0x01-0x06) are also left out on purpose, since
+/// Ctrl+click shouldn't disqualify a later tap.
+#[cfg(target_os = "windows")]
+const SCAN_RANGES: &[(u16, u16)] = &[
+    (0x08, 0x09), // Backspace, Tab
+    (0x0D, 0x0D), // Enter
+    (0x1B, 0x1B), // Esc
+    (0x20, 0x2E), // Space, PgUp/PgDn, End/Home, arrows, Insert, Delete
+    (0x30, 0x39), // 0-9
+    (0x41, 0x5A), // A-Z
+    (0x5B, 0x5D), // Win keys, Apps
+    (0x60, 0x6F), // Numpad
+    (0x70, 0x87), // F1-F24
+    (0xA0, 0xA5), // L/R Shift, Ctrl, Alt
+    (0xBA, 0xC0), // OEM punctuation
+    (0xDB, 0xDF), // OEM brackets/quotes
+    (0xE2, 0xE2), // OEM_102
+];
+
+/// Snapshot which scanned keys are currently held, excluding the target pair.
+#[cfg(target_os = "windows")]
+fn snapshot_keys(vk1: u16, vk2: u16) -> [bool; 256] {
+    use windows::Win32::UI::Input::KeyboardAndMouse::GetAsyncKeyState;
+
+    let mut held = [false; 256];
+    for &(start, end) in SCAN_RANGES {
+        for vk in start..=end {
+            if vk == vk1 || vk == vk2 {
+                continue;
+            }
+            if unsafe { GetAsyncKeyState(vk as i32) as u16 & 0x8000 } != 0 {
+                held[vk as usize] = true;
+            }
+        }
+    }
+    held
+}
+
+/// True if a key went down that wasn't already down when the modifier was
+/// pressed. Comparing against a baseline rather than an absolute "anything
+/// held" test means a key stuck down for the entire session (a phantom or a
+/// genuinely stuck key) can't permanently disable the hotkey.
+#[cfg(target_os = "windows")]
+fn new_key_pressed(baseline: &[bool; 256], vk1: u16, vk2: u16) -> bool {
+    use windows::Win32::UI::Input::KeyboardAndMouse::GetAsyncKeyState;
+
+    for &(start, end) in SCAN_RANGES {
+        for vk in start..=end {
+            if vk == vk1 || vk == vk2 || baseline[vk as usize] {
+                continue;
+            }
+            if unsafe { GetAsyncKeyState(vk as i32) as u16 & 0x8000 } != 0 {
+                return true;
+            }
+        }
+    }
+    false
 }
 
 #[cfg(not(target_os = "windows"))]

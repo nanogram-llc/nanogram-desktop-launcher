@@ -1,4 +1,5 @@
 pub mod apps;
+pub mod backup;
 pub mod evac;
 pub mod folders;
 pub mod icons;

@@ -116,6 +116,33 @@ export async function getIcon(appId: string): Promise<string> {
   return invoke("get_icon", { appId });
 }
 
+// ── Backup / restore ──
+
+export interface BackupInfo {
+  path: string;
+  name: string;
+  size: number;
+  created_at: number;
+  /** "manual" or "auto" */
+  kind: string;
+}
+
+export async function createBackup(): Promise<BackupInfo> {
+  return invoke("create_backup");
+}
+
+export async function listBackups(): Promise<BackupInfo[]> {
+  return invoke("list_backups");
+}
+
+export async function deleteBackup(path: string): Promise<void> {
+  return invoke("delete_backup", { path });
+}
+
+export async function restoreBackup(path: string): Promise<void> {
+  return invoke("restore_backup", { path });
+}
+
 export interface StartMenuPaths {
   all_users: string | null;
   current_user: string | null;
@@ -173,8 +200,18 @@ export async function getExeDir(): Promise<string> {
   return invoke("get_exe_dir");
 }
 
-export async function setVibracyTheme(dark: boolean): Promise<void> {
-  return invoke("set_vibrancy_theme", { dark });
+export async function setVibracyTheme(dark: boolean, plain = false): Promise<void> {
+  return invoke("set_vibrancy_theme", { dark, plain });
+}
+
+/** Copy the chosen image next to the EXE; returns the stored path. */
+export async function setBackgroundImage(source: string): Promise<string> {
+  return invoke("set_background_image", { source });
+}
+
+/** Read a stored background image as a base64 data URI. */
+export async function getBackgroundImageData(path: string): Promise<string> {
+  return invoke("get_background_image_data", { path });
 }
 
 // ── Command items ──

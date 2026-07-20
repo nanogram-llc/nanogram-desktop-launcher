@@ -4,6 +4,7 @@ import FolderManager from "./FolderManager";
 import AppTable from "./AppTable";
 import ItemTable from "./ItemTable";
 import CommandManager from "./CommandManager";
+import BackupManager from "./BackupManager";
 import About from "./About";
 
 interface SettingsWindowProps {
@@ -17,6 +18,7 @@ type Tab =
   | "files"
   | "registered_folders"
   | "commands"
+  | "backup"
   | "about";
 
 function SettingsWindow({ onThemeChange }: SettingsWindowProps) {
@@ -29,6 +31,7 @@ function SettingsWindow({ onThemeChange }: SettingsWindowProps) {
     { id: "files", label: "ファイル" },
     { id: "registered_folders", label: "フォルダ" },
     { id: "commands", label: "コマンド" },
+    { id: "backup", label: "バックアップ" },
     { id: "about", label: "このアプリについて" },
   ];
 
@@ -43,7 +46,7 @@ function SettingsWindow({ onThemeChange }: SettingsWindowProps) {
               onClick={() => setTab(t.id)}
               className={`w-full text-left px-2 py-2 text-sm rounded-lg transition-colors mb-0.5 whitespace-nowrap ${
                 tab === t.id
-                  ? "bg-blue-500/10 text-blue-600 dark:text-blue-400 font-medium"
+                  ? "accent-soft-bg accent-text font-medium"
                   : "text-gray-600 dark:text-gray-400 hover:bg-gray-500/10"
               }`}
             >
@@ -60,6 +63,7 @@ function SettingsWindow({ onThemeChange }: SettingsWindowProps) {
           {tab === "files" && <ItemTable itemType="file" label="ファイル" dropHint="ファイルをドロップして登録" />}
           {tab === "registered_folders" && <ItemTable itemType="folder" label="フォルダ" dropHint="フォルダをドロップして登録" />}
           {tab === "commands" && <CommandManager />}
+          {tab === "backup" && <BackupManager />}
           {tab === "about" && <About />}
         </div>
       </div>

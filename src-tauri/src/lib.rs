@@ -294,6 +294,10 @@ pub struct AppState {
     pub window_logical_size: Mutex<(u32, u32)>,
     /// Recently launched exe names with timestamp — prevents duplicate launches during startup delay
     pub recent_launches: Mutex<HashMap<String, std::time::Instant>>,
+    /// Launcher placement: (position keyword, margin in logical px). Cached here
+    /// because `move_and_show` runs synchronously on the hotkey path and must not
+    /// re-read settings.json.
+    pub window_placement: Mutex<(String, u32)>,
 }
 
 /// Guard returned by `AppState::lock_db()`. Derefs to `&Connection` so existing
@@ -469,6 +473,16 @@ pub fn run() {
                 .unwrap_or(false);
             commands::settings::apply_autostart(app.handle(), autostart_enabled);
 
+            let initial_position = settings_json
+                .get("window_position")
+                .and_then(|v| v.as_str())
+                .unwrap_or("center")
+                .to_string();
+            let initial_margin = settings_json
+                .get("window_margin")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(40) as u32;
+
             app.manage(AppState {
                 db: Mutex::new(Some(conn)),
                 dropbox_db_path: dropbox_db_path.clone(),
@@ -483,6 +497,7 @@ pub fn run() {
                 last_blur_hide: Mutex::new(None),
                 window_logical_size: Mutex::new((680, 460)),
                 recent_launches: Mutex::new(HashMap::new()),
+                window_placement: Mutex::new((initial_position, initial_margin)),
             });
 
             // Setup hotkey state
@@ -492,7 +507,19 @@ pub fn run() {
             // Start low-level keyboard hook for double-tap detection
             hotkey::start_keyboard_hook(app.handle().clone());
 
-            // Apply initial hotkey mode (combo or double-tap)
+            // Tap count / interval must be applied before the first detection.
+            hotkey::set_tap_config(
+                settings_json
+                    .get("hotkey_taps")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(2) as u32,
+                settings_json
+                    .get("hotkey_interval_ms")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(400) as u32,
+            );
+
+            // Apply initial hotkey mode (combo or multi-tap)
             let initial_hk = app
                 .state::<AppState>()
                 .current_hotkey
@@ -639,6 +666,23 @@ pub fn run() {
                 eprintln!("Failed to sync registered items: {}", e);
             }
 
+            // Daily automatic backup. Runs off-thread so zipping the DB and
+            // icon cache never delays the window appearing.
+            let auto_backup_enabled = settings_json
+                .get("auto_backup")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(true);
+            if auto_backup_enabled {
+                let app_handle_for_backup = app.handle().clone();
+                std::thread::spawn(move || {
+                    let state = app_handle_for_backup.state::<AppState>();
+                    match commands::backup::auto_backup_if_due(state.inner()) {
+                        Ok(()) => dlog("startup: auto backup check done"),
+                        Err(e) => eprintln!("Auto backup failed: {}", e),
+                    }
+                });
+            }
+
             // Background: re-extract icons for apps where the initial pass
             // failed (icon_cache_path is NULL). Uses the SHGetFileInfoW
             // fallback so most missing icons get filled in.
@@ -687,6 +731,10 @@ pub fn run() {
             commands::apps::launch_app_as_admin,
             commands::apps::open_folder_with,
             commands::apps::reveal_in_explorer,
+            commands::backup::create_backup,
+            commands::backup::list_backups,
+            commands::backup::delete_backup,
+            commands::backup::restore_backup,
             commands::apps::register_command,
             commands::apps::update_command,
             commands::apps::get_command_data,
@@ -711,6 +759,8 @@ pub fn run() {
             commands::window::set_launcher_size,
             commands::window::get_exe_dir,
             commands::window::set_vibrancy_theme,
+            commands::window::set_background_image,
+            commands::window::get_background_image_data,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

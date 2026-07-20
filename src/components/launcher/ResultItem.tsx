@@ -77,10 +77,7 @@ function ResultItem({ app, isSelected, onLaunch, onExclude, onSetTags, onPin, pi
   return (
     <div
       className={`px-5 py-2.5 cursor-pointer transition-colors duration-100 relative
-        ${isSelected
-          ? "bg-blue-500/20 dark:bg-blue-400/20"
-          : "hover:bg-gray-500/10 dark:hover:bg-gray-400/10"
-        }`}
+        ${isSelected ? "accent-soft-bg" : "hover:bg-gray-500/10 dark:hover:bg-gray-400/10"}`}
       onClick={() => !editingTags && onLaunch(app)}
       onContextMenu={handleContextMenu}
       onMouseEnter={onMouseEnter}
@@ -144,12 +141,12 @@ function ResultItem({ app, isSelected, onLaunch, onExclude, onSetTags, onPin, pi
               e.stopPropagation();
             }}
             placeholder="タグをカンマ区切りで入力"
-            className="flex-1 px-2 py-1 text-xs bg-gray-100 dark:bg-gray-700 rounded border border-gray-300 dark:border-gray-600 outline-none text-gray-900 dark:text-gray-100 focus:border-blue-400"
+            className="flex-1 px-2 py-1 text-xs bg-gray-100 dark:bg-gray-700 rounded border border-gray-300 dark:border-gray-600 outline-none text-gray-900 dark:text-gray-100 accent-focus"
             autoFocus
           />
           <button
             onClick={handleSaveTags}
-            className="px-2 py-1 text-xs bg-blue-500 text-white rounded hover:bg-blue-600"
+            className="px-2 py-1 text-xs accent-bg text-white rounded"
           >
             保存
           </button>
@@ -227,7 +224,7 @@ function ResultItem({ app, isSelected, onLaunch, onExclude, onSetTags, onPin, pi
             className={`w-full px-3 py-1.5 text-xs text-left hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors ${
               isPinnedFull || isAlreadyPinned
                 ? "text-gray-400 dark:text-gray-600 cursor-not-allowed"
-                : "text-blue-600 dark:text-blue-400"
+                : "accent-text"
             }`}
             disabled={isPinnedFull || isAlreadyPinned}
             onClick={() => {

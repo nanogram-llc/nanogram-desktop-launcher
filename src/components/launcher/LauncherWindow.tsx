@@ -9,8 +9,17 @@ import RecentStrip from "./RecentStrip";
 import type { AppEntry, Settings, SectionConfig } from "../../lib/types";
 import * as api from "../../lib/tauri";
 
-function LauncherWindow() {
+interface LauncherWindowProps {
+  /** Bumped by App when the theme changes, so the background is re-read. */
+  themeVersion?: number;
+}
+
+function LauncherWindow({ themeVersion = 0 }: LauncherWindowProps) {
   const [query, setQuery] = useState("");
+  const [bgImage, setBgImage] = useState<string | null>(null);
+  const [backgroundDim, setBackgroundDim] = useState(40);
+  const [backgroundScale, setBackgroundScale] = useState(100);
+  const [surfaceOpacity, setSurfaceOpacity] = useState(1);
   const [results, setResults] = useState<AppEntry[]>([]);
   const [recentApps, setRecentApps] = useState<AppEntry[]>([]);
   const [frequentApps, setFrequentApps] = useState<AppEntry[]>([]);
@@ -199,6 +208,35 @@ function LauncherWindow() {
       unlistenToast.then((fn) => fn());
     };
   }, []);
+
+  // Background image / opacity. Re-runs on themeVersion so changes made in the
+  // settings window show up without a restart.
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .getSettings()
+      .then(async (s) => {
+        if (cancelled) return;
+        setBackgroundDim(s.background_dim ?? 40);
+        setBackgroundScale(Math.max(100, s.background_scale ?? 100));
+        setSurfaceOpacity(Math.min(100, Math.max(50, s.window_opacity ?? 100)) / 100);
+        if (!s.background_image) {
+          setBgImage(null);
+          return;
+        }
+        try {
+          const data = await api.getBackgroundImageData(s.background_image);
+          if (!cancelled) setBgImage(data);
+        } catch {
+          // Image was moved or deleted — fall back to the plain surface.
+          if (!cancelled) setBgImage(null);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [themeVersion]);
 
   // Drag & drop registration on launcher screen
   useEffect(() => {
@@ -550,9 +588,30 @@ function LauncherWindow() {
 
   return (
     <div
-      className="w-full h-full rounded-2xl overflow-hidden border border-white/20 dark:border-white/10 bg-white/90 dark:bg-gray-900/80 backdrop-blur-xl shadow-2xl"
+      className="launcher-surface w-full h-full rounded-2xl overflow-hidden border border-white/20 dark:border-white/10 shadow-2xl relative backdrop-blur-xl"
       data-tauri-drag-region
     >
+      {/* Background image layer + dimming veil. Sits behind everything and
+          never intercepts clicks. `overflow-hidden` crops the image to the
+          window, so a scale above 100% frames a detail rather than shrinking
+          the whole picture to fit. */}
+      {bgImage && (
+        <div className="absolute inset-0 -z-10 pointer-events-none rounded-2xl overflow-hidden">
+          <div
+            className="absolute inset-0 bg-center bg-no-repeat"
+            style={{
+              backgroundImage: `url(${bgImage})`,
+              backgroundSize: `${backgroundScale}% auto`,
+              opacity: surfaceOpacity,
+            }}
+          />
+          <div
+            className="absolute inset-0 bg-black"
+            style={{ opacity: backgroundDim / 100 }}
+          />
+        </div>
+      )}
+
       {/* Toast */}
       {toast && (
         <div className="absolute top-3 left-1/2 -translate-x-1/2 z-50 px-4 py-2 bg-gray-800 dark:bg-gray-200 text-white dark:text-gray-900 text-sm rounded-lg shadow-lg">
@@ -562,8 +621,8 @@ function LauncherWindow() {
 
       {/* Drag overlay */}
       {dragOver && (
-        <div className="absolute inset-0 z-40 bg-blue-500/10 backdrop-blur-sm flex items-center justify-center rounded-2xl pointer-events-none">
-          <div className="px-6 py-4 bg-white dark:bg-gray-800 rounded-xl shadow-2xl border-2 border-dashed border-blue-400">
+        <div className="absolute inset-0 z-40 accent-soft-bg backdrop-blur-sm flex items-center justify-center rounded-2xl pointer-events-none">
+          <div className="px-6 py-4 bg-white dark:bg-gray-800 rounded-xl shadow-2xl border-2 border-dashed accent-border">
             <div className="text-sm font-medium text-gray-700 dark:text-gray-300">
               ドロップして登録
             </div>
@@ -610,7 +669,7 @@ function LauncherWindow() {
           )}
         </div>
       </div>
-      <div className="absolute top-3 right-3 flex items-center gap-1">
+      <div className="absolute top-3 right-3 z-20 flex items-center gap-1">
         {showEvacButton && (
           <>
             {/* Evacuation toggle: ON copies the DB local so Dropbox can sync */}
@@ -640,7 +699,7 @@ function LauncherWindow() {
               <>
                 <button
                   onClick={handleMerge}
-                  className="px-2 py-1 rounded-lg text-[11px] font-medium text-blue-600 dark:text-blue-400 hover:bg-blue-500/10 transition-colors"
+                  className="px-2 py-1 rounded-lg text-[11px] font-medium accent-text hover:bg-[var(--accent-soft)] transition-colors"
                   title="ローカルの変更をDropboxへ統合して退避を解除"
                 >
                   マージ実行

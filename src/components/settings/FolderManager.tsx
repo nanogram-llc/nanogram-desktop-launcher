@@ -141,10 +141,10 @@ function FolderManager() {
                 className={`flex items-center gap-3 p-3 rounded-xl border text-left transition-colors ${
                   isFolderRegistered(allUsersPath)
                     ? "bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800 opacity-70"
-                    : "bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800 hover:bg-blue-100 dark:hover:bg-blue-900/30"
+                    : "accent-soft-bg accent-border"
                 } disabled:cursor-not-allowed`}
               >
-                <div className="w-9 h-9 rounded-lg bg-blue-500 flex items-center justify-center shrink-0">
+                <div className="w-9 h-9 rounded-lg accent-bg flex items-center justify-center shrink-0">
                   <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
                   </svg>
@@ -169,7 +169,7 @@ function FolderManager() {
                 className={`flex items-center gap-3 p-3 rounded-xl border text-left transition-colors ${
                   isFolderRegistered(currentUserPath)
                     ? "bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800 opacity-70"
-                    : "bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800 hover:bg-blue-100 dark:hover:bg-blue-900/30"
+                    : "accent-soft-bg accent-border"
                 } disabled:cursor-not-allowed`}
               >
                 <div className="w-9 h-9 rounded-lg bg-indigo-500 flex items-center justify-center shrink-0">
@@ -200,7 +200,7 @@ function FolderManager() {
           <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">フォルダ管理</h2>
           <button
             onClick={handleAddFolder}
-            className="px-3 py-1.5 text-sm font-medium bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
+            className="px-3 py-1.5 text-sm font-medium accent-bg text-white rounded-lg transition-colors"
           >
             + フォルダ追加
           </button>

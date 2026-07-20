@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { emit, listen } from "@tauri-apps/api/event";
-import type { Settings, SectionConfig, SectionId } from "../../lib/types";
+import type { Settings, SectionConfig, SectionId, WindowPosition } from "../../lib/types";
+import { ACCENT_PRESETS } from "../../lib/theme";
 import * as api from "../../lib/tauri";
 
 const DEFAULT_SECTIONS: SectionConfig[] = [
@@ -14,6 +15,21 @@ const SECTION_LABELS: Record<SectionId, string> = {
   frequent: "よく使う",
   pinned: "固定",
 };
+
+const POSITION_LABELS: Record<WindowPosition, string> = {
+  "top-left": "左上",
+  "top-right": "右上",
+  center: "中央",
+  "bottom-left": "左下",
+  "bottom-right": "右下",
+};
+
+/** 画面上の位置関係がそのまま伝わるよう 3x3 グリッドに配置する */
+const POSITION_LAYOUT: (WindowPosition | null)[][] = [
+  ["top-left", null, "top-right"],
+  [null, "center", null],
+  ["bottom-left", null, "bottom-right"],
+];
 
 interface GeneralSettingsProps {
   onThemeChange: (theme: string) => void;
@@ -95,6 +111,19 @@ function GeneralSettings({ onThemeChange }: GeneralSettingsProps) {
     pinned_rows: 2,
     debug_log: false,
     show_evac_button: false,
+    hotkey_taps: 2,
+    hotkey_interval_ms: 400,
+    window_position: "center",
+    window_margin: 40,
+    auto_backup: true,
+    accent_color: "blue",
+    accent_custom: "#3b82f6",
+    background_image: "",
+    background_dim: 40,
+    background_scale: 100,
+    window_opacity: 100,
+    text_color: "auto",
+    text_custom: "#ffffff",
   });
   const [loaded, setLoaded] = useState(false);
   const [recording, setRecording] = useState(false);
@@ -193,6 +222,23 @@ function GeneralSettings({ onThemeChange }: GeneralSettingsProps) {
     });
   }, [autoSave]);
 
+  const handlePickBackground = useCallback(async () => {
+    const { open } = await import("@tauri-apps/plugin-dialog");
+    const selected = await open({
+      multiple: false,
+      title: "背景画像を選択",
+      filters: [{ name: "画像", extensions: ["png", "jpg", "jpeg", "webp", "bmp", "gif", "avif"] }],
+    });
+    if (!selected) return;
+    try {
+      // Rust copies the file next to the EXE and returns the stored path.
+      const stored = await api.setBackgroundImage(selected as string);
+      update({ background_image: stored });
+    } catch (e) {
+      console.error("Failed to set background image:", e);
+    }
+  }, [update]);
+
   // Key recording listener
   useEffect(() => {
     if (!recording) return;
@@ -238,7 +284,7 @@ function GeneralSettings({ onThemeChange }: GeneralSettingsProps) {
           <button
             onClick={() => update({ autostart: !settings.autostart })}
             className={`relative w-11 h-6 rounded-full transition-colors ${
-              settings.autostart ? "bg-blue-500" : "bg-gray-300 dark:bg-gray-600"
+              settings.autostart ? "accent-bg" : "bg-gray-300 dark:bg-gray-600"
             }`}
           >
             <span
@@ -262,8 +308,8 @@ function GeneralSettings({ onThemeChange }: GeneralSettingsProps) {
                 }}
                 className={`px-4 py-2 text-sm rounded-lg border transition-colors ${
                   settings.theme === t
-                    ? "bg-blue-500 text-white border-blue-500"
-                    : "bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:border-blue-400"
+                    ? "accent-bg text-white accent-border"
+                    : "bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:accent-border"
                 }`}
               >
                 {t === "system" ? "システム" : t === "light" ? "ライト" : "ダーク"}
@@ -271,6 +317,224 @@ function GeneralSettings({ onThemeChange }: GeneralSettingsProps) {
             ))}
           </div>
         </div>
+
+        {/* Accent color */}
+        <div>
+          <div className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">アクセントカラー</div>
+          <div className="flex flex-wrap items-center gap-2">
+            {(Object.keys(ACCENT_PRESETS) as (keyof typeof ACCENT_PRESETS)[]).map((key) => (
+              <button
+                key={key}
+                onClick={() => update({ accent_color: key })}
+                title={ACCENT_PRESETS[key].label}
+                className={`w-9 h-9 rounded-full border-2 transition-transform hover:scale-110 ${
+                  settings.accent_color === key
+                    ? "border-gray-900 dark:border-white scale-110"
+                    : "border-transparent"
+                }`}
+                style={{ backgroundColor: ACCENT_PRESETS[key].color }}
+              />
+            ))}
+            <label
+              className={`flex items-center gap-2 px-3 py-1.5 text-xs rounded-lg border cursor-pointer transition-colors ${
+                settings.accent_color === "custom"
+                  ? "border-gray-900 dark:border-white"
+                  : "border-gray-300 dark:border-gray-600 hover:accent-border"
+              }`}
+            >
+              <input
+                type="color"
+                value={settings.accent_custom || "#3b82f6"}
+                onChange={(e) =>
+                  update({ accent_color: "custom", accent_custom: e.target.value })
+                }
+                className="w-5 h-5 rounded cursor-pointer border-0 bg-transparent p-0"
+              />
+              <span className="text-gray-700 dark:text-gray-300">カスタム</span>
+            </label>
+          </div>
+        </div>
+
+        {/* Background image */}
+        <div>
+          <div className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">背景画像</div>
+          <div className="text-xs text-gray-500 dark:text-gray-400 mb-2">
+            選択した画像は EXE 隣の <code>theme/</code> にコピーされるため、元ファイルを移動しても表示されます
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handlePickBackground}
+              className="px-3 py-1.5 text-sm bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
+            >
+              画像を選択
+            </button>
+            {settings.background_image && (
+              <button
+                onClick={() => update({ background_image: "" })}
+                className="px-3 py-1.5 text-sm text-red-600 dark:text-red-400 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+              >
+                解除
+              </button>
+            )}
+          </div>
+          {settings.background_image && (
+            <div className="text-[10px] text-gray-400 dark:text-gray-500 mt-1 truncate">
+              {settings.background_image}
+            </div>
+          )}
+        </div>
+
+        {/* Background image adjustments (only meaningful with an image) */}
+        {settings.background_image && (
+          <>
+            <div>
+              <div className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                背景の拡大率: {settings.background_scale}%
+              </div>
+              <div className="text-xs text-gray-500 dark:text-gray-400 mb-2">
+                100%以上にすると画像がウィンドウからはみ出し、拡大した一部だけが表示されます
+              </div>
+              <input
+                type="range"
+                min={100}
+                max={300}
+                step={10}
+                value={settings.background_scale}
+                onChange={(e) => update({ background_scale: parseInt(e.target.value) })}
+                className="w-full accent-input"
+              />
+            </div>
+
+            <div>
+              <div className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                背景の暗さ: {settings.background_dim}%
+              </div>
+              <div className="text-xs text-gray-500 dark:text-gray-400 mb-2">
+                文字が読みにくいときは暗くしてください
+              </div>
+              <input
+                type="range"
+                min={0}
+                max={90}
+                step={5}
+                value={settings.background_dim}
+                onChange={(e) => update({ background_dim: parseInt(e.target.value) })}
+                className="w-full accent-input"
+              />
+            </div>
+          </>
+        )}
+
+        {/* Launcher text colour */}
+        <div>
+          <div className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            ランチャーの文字色
+          </div>
+          <div className="text-xs text-gray-500 dark:text-gray-400 mb-2">
+            背景色や背景画像に合わせて調整できます（設定画面の文字色は変わりません）
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            {([
+              { value: "auto", label: "自動" },
+              { value: "light", label: "明るい" },
+              { value: "dark", label: "暗い" },
+            ] as const).map((opt) => (
+              <button
+                key={opt.value}
+                onClick={() => update({ text_color: opt.value })}
+                className={`px-4 py-2 text-sm rounded-lg border transition-colors ${
+                  settings.text_color === opt.value
+                    ? "accent-bg text-white accent-border"
+                    : "bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:accent-border"
+                }`}
+              >
+                {opt.label}
+              </button>
+            ))}
+            <label
+              className={`flex items-center gap-2 px-3 py-2 text-sm rounded-lg border cursor-pointer transition-colors ${
+                settings.text_color === "custom"
+                  ? "accent-border"
+                  : "border-gray-300 dark:border-gray-600 hover:accent-border"
+              }`}
+            >
+              <input
+                type="color"
+                value={settings.text_custom || "#ffffff"}
+                onChange={(e) => update({ text_color: "custom", text_custom: e.target.value })}
+                className="w-5 h-5 rounded cursor-pointer border-0 bg-transparent p-0"
+              />
+              <span className="text-gray-700 dark:text-gray-300">カスタム</span>
+            </label>
+          </div>
+        </div>
+
+        {/* Window opacity */}
+        <div>
+          <div className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+            ウィンドウの不透明度: {settings.window_opacity}%
+          </div>
+          <div className="text-xs text-gray-500 dark:text-gray-400 mb-2">
+            100% = 完全に不透明。下げるほど背後のデスクトップが透けます（Mica/Acrylic効果は無効になります）
+          </div>
+          <input
+            type="range"
+            min={50}
+            max={100}
+            step={5}
+            value={settings.window_opacity}
+            onChange={(e) => update({ window_opacity: parseInt(e.target.value) })}
+            className="w-full accent-input"
+          />
+        </div>
+
+        {/* Window position */}
+        <div>
+          <div className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">表示位置</div>
+          <div className="text-xs text-gray-500 dark:text-gray-400 mb-2">
+            カーソルのあるモニター内での表示位置
+          </div>
+          <div className="grid grid-cols-3 gap-1.5 w-fit">
+            {POSITION_LAYOUT.map((row, ri) =>
+              row.map((pos, ci) =>
+                pos === null ? (
+                  <div key={`${ri}-${ci}`} />
+                ) : (
+                  <button
+                    key={pos}
+                    onClick={() => update({ window_position: pos })}
+                    title={POSITION_LABELS[pos]}
+                    className={`w-16 h-10 text-[10px] rounded-lg border transition-colors ${
+                      settings.window_position === pos
+                        ? "accent-bg text-white accent-border"
+                        : "bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-400 border-gray-300 dark:border-gray-600 hover:accent-border"
+                    }`}
+                  >
+                    {POSITION_LABELS[pos]}
+                  </button>
+                )
+              )
+            )}
+          </div>
+        </div>
+
+        {/* Window margin (corner positions only) */}
+        {settings.window_position !== "center" && (
+          <div>
+            <div className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              画面端からのマージン: {settings.window_margin}px
+            </div>
+            <input
+              type="range"
+              min={0}
+              max={200}
+              step={5}
+              value={settings.window_margin}
+              onChange={(e) => update({ window_margin: parseInt(e.target.value) })}
+              className="w-full accent-input"
+            />
+          </div>
+        )}
 
         {/* Max Results */}
         <div>
@@ -283,7 +547,7 @@ function GeneralSettings({ onThemeChange }: GeneralSettingsProps) {
             max={20}
             value={settings.max_results}
             onChange={(e) => update({ max_results: parseInt(e.target.value) })}
-            className="w-full accent-blue-500"
+            className="w-full accent-input"
           />
         </div>
 
@@ -311,7 +575,7 @@ function GeneralSettings({ onThemeChange }: GeneralSettingsProps) {
               // ウィンドウが閉じる前にdebounceが発火しない場合に備えて即座にディスク保存
               api.updateSettings({ ...settings, ...patch }).catch(console.error);
             }}
-            className="w-full accent-blue-500"
+            className="w-full accent-input"
           />
         </div>
 
@@ -339,7 +603,7 @@ function GeneralSettings({ onThemeChange }: GeneralSettingsProps) {
               // ウィンドウが閉じる前にdebounceが発火しない場合に備えて即座にディスク保存
               api.updateSettings({ ...settings, ...patch }).catch(console.error);
             }}
-            className="w-full accent-blue-500"
+            className="w-full accent-input"
           />
         </div>
 
@@ -354,7 +618,7 @@ function GeneralSettings({ onThemeChange }: GeneralSettingsProps) {
             value={settings.file_extensions}
             onChange={(e) => update({ file_extensions: e.target.value })}
             placeholder="txt,json,md,csv,pdf,docx,xlsx"
-            className="w-full px-3 py-2 text-sm bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 outline-none focus:border-blue-400"
+            className="w-full px-3 py-2 text-sm bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 outline-none accent-focus"
           />
         </div>
 
@@ -411,7 +675,7 @@ function GeneralSettings({ onThemeChange }: GeneralSettingsProps) {
                       update({ sections: newSections });
                     }}
                     className={`relative w-9 h-5 rounded-full transition-colors ${
-                      sec.visible ? "bg-blue-500" : "bg-gray-300 dark:bg-gray-600"
+                      sec.visible ? "accent-bg" : "bg-gray-300 dark:bg-gray-600"
                     }`}
                   >
                     <span
@@ -438,11 +702,11 @@ function GeneralSettings({ onThemeChange }: GeneralSettingsProps) {
               }}
               className={`px-3 py-1.5 text-xs rounded-lg border transition-colors ${
                 !isComboMode
-                  ? "bg-blue-500 text-white border-blue-500"
-                  : "bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:border-blue-400"
+                  ? "accent-bg text-white accent-border"
+                  : "bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:accent-border"
               }`}
             >
-              ダブルタップ
+              {settings.hotkey_taps === 3 ? "トリプルタップ" : "ダブルタップ"}
             </button>
             <button
               onClick={() => {
@@ -452,38 +716,89 @@ function GeneralSettings({ onThemeChange }: GeneralSettingsProps) {
               }}
               className={`px-3 py-1.5 text-xs rounded-lg border transition-colors ${
                 isComboMode
-                  ? "bg-blue-500 text-white border-blue-500"
-                  : "bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:border-blue-400"
+                  ? "accent-bg text-white accent-border"
+                  : "bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:accent-border"
               }`}
             >
               キー組み合わせ
             </button>
           </div>
 
-          {/* Double-tap options */}
+          {/* Multi-tap options */}
           {!isComboMode && !recording && (
-            <div>
-              <div className="text-xs text-gray-500 dark:text-gray-400 mb-2">
-                選択したキーを素早く2回押すとランチャーが表示/非表示されます
+            <div className="space-y-4">
+              <div>
+                <div className="text-xs text-gray-500 dark:text-gray-400 mb-2">
+                  選択したキーを素早く{settings.hotkey_taps}回押すとランチャーが表示/非表示されます
+                </div>
+                <div className="flex gap-2">
+                  {([
+                    { value: "Control", label: "Ctrl" },
+                    { value: "Alt", label: "Alt" },
+                    { value: "Shift", label: "Shift" },
+                  ] as const).map((opt) => (
+                    <button
+                      key={opt.value}
+                      onClick={() => update({ hotkey: opt.value })}
+                      className={`px-4 py-2 text-sm rounded-lg border transition-colors ${
+                        settings.hotkey === opt.value
+                          ? "accent-bg text-white accent-border"
+                          : "bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:accent-border"
+                      }`}
+                    >
+                      {opt.label} × {settings.hotkey_taps}
+                    </button>
+                  ))}
+                </div>
               </div>
-              <div className="flex gap-2">
-                {([
-                  { value: "Control", label: "Ctrl × 2" },
-                  { value: "Alt", label: "Alt × 2" },
-                  { value: "Shift", label: "Shift × 2" },
-                ] as const).map((opt) => (
-                  <button
-                    key={opt.value}
-                    onClick={() => update({ hotkey: opt.value })}
-                    className={`px-4 py-2 text-sm rounded-lg border transition-colors ${
-                      settings.hotkey === opt.value
-                        ? "bg-blue-500 text-white border-blue-500"
-                        : "bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:border-blue-400"
-                    }`}
-                  >
-                    {opt.label}
-                  </button>
-                ))}
+
+              {/* Tap mode */}
+              <div>
+                <div className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">タップ方式</div>
+                <div className="text-xs text-gray-500 dark:text-gray-400 mb-2">
+                  誤検知が気になる場合はトリプルタップにすると、より確実に意図した操作だけで反応します
+                </div>
+                <div className="flex gap-2">
+                  {([
+                    { taps: 2, label: "ダブルタップ" },
+                    { taps: 3, label: "トリプルタップ" },
+                  ] as const).map((opt) => (
+                    <button
+                      key={opt.taps}
+                      onClick={() => update({ hotkey_taps: opt.taps })}
+                      className={`px-4 py-2 text-sm rounded-lg border transition-colors ${
+                        settings.hotkey_taps === opt.taps
+                          ? "accent-bg text-white accent-border"
+                          : "bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:accent-border"
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Tap interval */}
+              <div>
+                <div className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  タップ判定間隔: {settings.hotkey_interval_ms}ms
+                </div>
+                <div className="text-xs text-gray-500 dark:text-gray-400 mb-2">
+                  長くすると余裕を持って押せますが、短くすると誤検知が減ります
+                </div>
+                <input
+                  type="range"
+                  min={200}
+                  max={800}
+                  step={50}
+                  value={settings.hotkey_interval_ms}
+                  onChange={(e) => update({ hotkey_interval_ms: parseInt(e.target.value) })}
+                  className="w-full accent-input"
+                />
+              </div>
+
+              <div className="text-xs text-gray-500 dark:text-gray-400 bg-gray-100/70 dark:bg-gray-800/50 rounded-lg px-3 py-2">
+                💡 Ctrl+C や Ctrl+V のように他のキーと一緒に押した場合は、タップとして数えないため誤検知しません
               </div>
             </div>
           )}
@@ -572,7 +887,7 @@ function GeneralSettings({ onThemeChange }: GeneralSettingsProps) {
             <>
               <button
                 onClick={handleMerge}
-                className="px-3 py-1.5 text-xs font-medium bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
+                className="px-3 py-1.5 text-xs font-medium accent-bg text-white rounded-lg transition-colors"
               >
                 マージ実行
               </button>
@@ -598,7 +913,7 @@ function GeneralSettings({ onThemeChange }: GeneralSettingsProps) {
           <button
             onClick={() => update({ show_evac_button: !settings.show_evac_button })}
             className={`relative w-11 h-6 rounded-full transition-colors ${
-              settings.show_evac_button ? "bg-blue-500" : "bg-gray-300 dark:bg-gray-600"
+              settings.show_evac_button ? "accent-bg" : "bg-gray-300 dark:bg-gray-600"
             }`}
           >
             <span
@@ -616,7 +931,7 @@ function GeneralSettings({ onThemeChange }: GeneralSettingsProps) {
         </div>
         <button
           onClick={() => api.openSettingsFile().catch(() => {})}
-          className="text-xs text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300"
+          className="text-xs accent-text hover:accent-text dark:hover:text-blue-300"
         >
           settings.json を開く
         </button>

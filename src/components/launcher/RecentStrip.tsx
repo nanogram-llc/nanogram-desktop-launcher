@@ -289,7 +289,7 @@ function RecentStrip({
                   key={`slot-${idx}`}
                   ref={(el) => { slotRefs.current[idx] = el; }}
                   className={`rounded-xl transition-all duration-100 ${
-                    isOver ? "ring-2 ring-blue-400 bg-blue-500/10" : ""
+                    isOver ? "accent-ring accent-soft-bg" : ""
                   } ${!app ? "aspect-square bg-gray-100/50 dark:bg-gray-800/30" : ""}`}
                 >
                   {app && (
@@ -342,12 +342,12 @@ function RecentStrip({
               e.stopPropagation();
             }}
             placeholder="タグをカンマ区切りで入力"
-            className="flex-1 px-2 py-1 text-xs bg-gray-100 dark:bg-gray-700 rounded border border-gray-300 dark:border-gray-600 outline-none text-gray-900 dark:text-gray-100 focus:border-blue-400"
+            className="flex-1 px-2 py-1 text-xs bg-gray-100 dark:bg-gray-700 rounded border border-gray-300 dark:border-gray-600 outline-none text-gray-900 dark:text-gray-100 accent-focus"
             autoFocus
           />
           <button
             onClick={handleSaveTags}
-            className="px-2 py-1 text-xs bg-blue-500 text-white rounded hover:bg-blue-600"
+            className="px-2 py-1 text-xs accent-bg text-white rounded"
           >
             保存
           </button>
@@ -425,7 +425,7 @@ function RecentStrip({
               className={`w-full px-3 py-1.5 text-xs text-left hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors ${
                 isPinnedFull || pinnedIds.includes(menuState.app.id)
                   ? "text-gray-400 dark:text-gray-600 cursor-not-allowed"
-                  : "text-blue-600 dark:text-blue-400"
+                  : "accent-text"
               }`}
               disabled={isPinnedFull || pinnedIds.includes(menuState.app.id)}
               onClick={() => {

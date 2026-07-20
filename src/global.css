@@ -18,14 +18,82 @@ body,
     sans-serif;
 }
 
+/* Theme variables. --accent is overwritten at runtime by applyTheme() in
+   App.tsx; the values here are the defaults used before settings load.
+   --surface-alpha is driven by the window opacity setting. */
+:root {
+  --accent: #3b82f6;
+  --accent-hover: #2563eb;
+  --accent-soft: rgba(59, 130, 246, 0.2);
+  --surface-alpha: 0.97;
+  --surface-rgb: 240, 240, 240;
+}
+html.dark {
+  --surface-rgb: 24, 24, 28;
+}
+
 /* Fallback background when vibrancy (Mica/Acrylic) is unavailable.
    When vibrancy IS active, the native effect paints behind the webview,
    so a near-opaque fallback is harmless — the compositor blends them. */
 html {
-  background-color: rgba(240, 240, 240, 0.97);
+  background-color: rgba(var(--surface-rgb), var(--surface-alpha));
 }
-html.dark {
-  background-color: rgba(24, 24, 28, 0.97);
+
+/* Accent helpers — used where a Tailwind colour literal can't follow the
+   runtime theme. */
+.accent-bg {
+  background-color: var(--accent);
+}
+.accent-bg:hover {
+  background-color: var(--accent-hover);
+}
+.accent-text {
+  color: var(--accent);
+}
+.accent-border {
+  border-color: var(--accent);
+}
+.accent-focus:focus {
+  border-color: var(--accent);
+}
+.accent-ring {
+  box-shadow: 0 0 0 2px var(--accent);
+}
+.accent-soft-bg {
+  background-color: var(--accent-soft);
+}
+/* Range sliders / checkboxes */
+.accent-input {
+  accent-color: var(--accent);
+}
+
+/* Launcher surface. The alpha is driven by the opacity setting rather than a
+   fixed Tailwind background-opacity utility, so the slider actually changes
+   something. Opacity is NOT applied to the container itself — that would fade
+   the text along with the background. */
+.launcher-surface {
+  background-color: rgba(var(--surface-rgb), var(--surface-alpha));
+}
+
+/* Text colour override for the launcher.
+   The UI is built from Tailwind colour utilities, so rather than rewriting
+   every component the utilities are re-pointed at the themed variables while
+   an override is active. Substring attribute selectors are used so that both
+   `text-gray-900` and the `dark:text-gray-100` variant are caught without
+   needing escaped class selectors. Sub comes second so that on the rare
+   element carrying both, the muted colour wins. */
+html.custom-text .launcher-surface [class*="text-gray-9"],
+html.custom-text .launcher-surface [class*="text-gray-8"],
+html.custom-text .launcher-surface [class*="text-gray-7"],
+html.custom-text .launcher-surface [class*="text-gray-1"],
+html.custom-text .launcher-surface [class*="text-gray-2"],
+html.custom-text .launcher-surface [class*="text-gray-3"] {
+  color: var(--text-main);
+}
+html.custom-text .launcher-surface [class*="text-gray-6"],
+html.custom-text .launcher-surface [class*="text-gray-5"],
+html.custom-text .launcher-surface [class*="text-gray-4"] {
+  color: var(--text-sub);
 }
 
 /* Toast animation */

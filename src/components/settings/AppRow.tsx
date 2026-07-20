@@ -57,7 +57,7 @@ function AppRow({
     <div
       className={`p-3 rounded-lg border transition-colors ${
         selected
-          ? "bg-blue-50 dark:bg-blue-900/20 border-blue-300 dark:border-blue-700"
+          ? "accent-soft-bg accent-border"
           : removeMode === "include"
             ? "bg-gray-100/50 dark:bg-gray-800/30 border-gray-200/30 dark:border-gray-700/30"
             : "bg-white dark:bg-gray-800/80 border-gray-200/50 dark:border-gray-700/50"
@@ -69,7 +69,7 @@ function AppRow({
           type="checkbox"
           checked={selected}
           onChange={() => onToggleSelect(app.id)}
-          className="rounded border-gray-300 dark:border-gray-600 accent-blue-500 shrink-0"
+          className="rounded border-gray-300 dark:border-gray-600 accent-input shrink-0"
         />
 
         {/* Icon */}
@@ -88,12 +88,12 @@ function AppRow({
               onChange={(e) => setEditName(e.target.value)}
               onBlur={handleSaveName}
               onKeyDown={(e) => e.key === "Enter" && handleSaveName()}
-              className="w-full px-2 py-0.5 text-sm bg-gray-100 dark:bg-gray-700 rounded border border-blue-400 outline-none text-gray-900 dark:text-gray-100"
+              className="w-full px-2 py-0.5 text-sm bg-gray-100 dark:bg-gray-700 rounded border accent-border outline-none text-gray-900 dark:text-gray-100"
               autoFocus
             />
           ) : (
             <div
-              className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate cursor-pointer hover:text-blue-500"
+              className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate cursor-pointer hover:accent-text"
               onClick={() => {
                 setEditName(app.name);
                 setEditing(true);
@@ -117,10 +117,10 @@ function AppRow({
               disabled={isPinned || pinFull}
               className={`p-1 transition-colors ${
                 isPinned
-                  ? "text-blue-500 cursor-default"
+                  ? "accent-text cursor-default"
                   : pinFull
                     ? "text-gray-300 dark:text-gray-600 cursor-not-allowed"
-                    : "text-gray-400 hover:text-blue-500"
+                    : "text-gray-400 hover:accent-text"
               }`}
               title={isPinned ? "固定済み" : pinFull ? "固定エリアが満杯です" : "固定エリアに追加"}
             >
@@ -150,7 +150,7 @@ function AppRow({
               setTagInput(app.tags.join(", "));
               setEditingTags(!editingTags);
             }}
-            className="p-1 text-gray-400 hover:text-blue-500 transition-colors"
+            className="p-1 text-gray-400 hover:accent-text transition-colors"
             title="タグ編集"
           >
             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -205,12 +205,12 @@ function AppRow({
             onChange={(e) => setTagInput(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && handleSaveTags()}
             placeholder="タグをカンマ区切りで入力"
-            className="flex-1 px-2 py-1 text-xs bg-gray-100 dark:bg-gray-700 rounded border border-gray-300 dark:border-gray-600 outline-none text-gray-900 dark:text-gray-100 focus:border-blue-400"
+            className="flex-1 px-2 py-1 text-xs bg-gray-100 dark:bg-gray-700 rounded border border-gray-300 dark:border-gray-600 outline-none text-gray-900 dark:text-gray-100 accent-focus"
             autoFocus
           />
           <button
             onClick={handleSaveTags}
-            className="px-2 py-1 text-xs bg-blue-500 text-white rounded hover:bg-blue-600"
+            className="px-2 py-1 text-xs accent-bg text-white rounded"
           >
             保存
           </button>
@@ -223,7 +223,7 @@ function AppRow({
           {app.tags.map((tag) => (
             <span
               key={tag}
-              className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-100/80 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400"
+              className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-100/80 dark:bg-blue-900/30 accent-text"
             >
               {tag}
             </span>

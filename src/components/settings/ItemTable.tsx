@@ -205,10 +205,10 @@ function ItemTable({ itemType, label, dropHint }: ItemTableProps) {
       )}
 
       {dragOver && (
-        <div className="fixed inset-0 z-40 bg-blue-500/10 backdrop-blur-sm flex items-center justify-center pointer-events-none">
-          <div className="px-8 py-6 bg-white dark:bg-gray-800 rounded-2xl shadow-2xl border-2 border-dashed border-blue-400 dark:border-blue-500">
+        <div className="fixed inset-0 z-40 accent-soft-bg backdrop-blur-sm flex items-center justify-center pointer-events-none">
+          <div className="px-8 py-6 bg-white dark:bg-gray-800 rounded-2xl shadow-2xl border-2 border-dashed accent-border">
             <div className="text-center">
-              <svg className="w-12 h-12 mx-auto mb-3 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-12 h-12 mx-auto mb-3 accent-text" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 4v16m8-8H4" />
               </svg>
               <div className="text-sm font-medium text-gray-700 dark:text-gray-300">
@@ -226,7 +226,7 @@ function ItemTable({ itemType, label, dropHint }: ItemTableProps) {
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
           placeholder={`${label}を検索...`}
-          className="flex-1 px-3 py-2 text-sm bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 outline-none focus:border-blue-400"
+          className="flex-1 px-3 py-2 text-sm bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 outline-none accent-focus"
         />
         {selected.size > 0 && (
           <button
@@ -245,7 +245,7 @@ function ItemTable({ itemType, label, dropHint }: ItemTableProps) {
             type="checkbox"
             checked={selected.size === filteredItems.length && filteredItems.length > 0}
             onChange={toggleSelectAll}
-            className="rounded border-gray-300 dark:border-gray-600 accent-blue-500"
+            className="rounded border-gray-300 dark:border-gray-600 accent-input"
           />
           すべて選択 ({filteredItems.length}件)
         </label>

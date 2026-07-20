@@ -97,6 +97,34 @@ pub struct Settings {
     pub debug_log: bool,
     /// Show the DB evacuation controls on the main launcher window.
     pub show_evac_button: bool,
+    /// Number of consecutive taps required to toggle the launcher (2 or 3).
+    pub hotkey_taps: u32,
+    /// Max gap between taps, in milliseconds (200-800).
+    pub hotkey_interval_ms: u32,
+    /// Where the launcher appears on the target monitor:
+    /// "center" | "top-left" | "top-right" | "bottom-left" | "bottom-right"
+    pub window_position: String,
+    /// Margin from the screen edge in logical pixels (corner positions only).
+    pub window_margin: u32,
+    /// Create a daily backup on startup (kept separately from manual ones).
+    pub auto_backup: bool,
+    /// Accent colour preset: "blue"|"green"|"purple"|"amber"|"rose"|"custom"
+    pub accent_color: String,
+    /// Hex colour ("#3b82f6") used when `accent_color` is "custom".
+    pub accent_custom: String,
+    /// Absolute path to the launcher background image; empty = none.
+    pub background_image: String,
+    /// Darkening applied over the background image, 0-100.
+    pub background_dim: u32,
+    /// Background image zoom, 100-300 (%). Above 100 the image is cropped by
+    /// the window, letting the user frame a detail.
+    pub background_scale: u32,
+    /// Launcher window opacity, 50-100. 100 = fully opaque.
+    pub window_opacity: u32,
+    /// Launcher text colour: "auto" | "light" | "dark" | "custom"
+    pub text_color: String,
+    /// Hex colour used when `text_color` is "custom".
+    pub text_custom: String,
 }
 
 impl Default for Settings {
@@ -119,6 +147,19 @@ impl Default for Settings {
             excluded_patterns: Vec::new(),
             debug_log: false,
             show_evac_button: false,
+            hotkey_taps: 2,
+            hotkey_interval_ms: 400,
+            window_position: "center".to_string(),
+            window_margin: 40,
+            auto_backup: true,
+            accent_color: "blue".to_string(),
+            accent_custom: "#3b82f6".to_string(),
+            background_image: String::new(),
+            background_dim: 40,
+            background_scale: 100,
+            window_opacity: 100,
+            text_color: "auto".to_string(),
+            text_custom: "#ffffff".to_string(),
         }
     }
 }

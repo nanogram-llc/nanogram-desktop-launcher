@@ -48,7 +48,7 @@ function About() {
           </div>
           <button
             onClick={() => openUrl(PRODUCT_URL)}
-            className="text-sm text-blue-600 dark:text-blue-400 hover:underline break-all text-left"
+            className="text-sm accent-text hover:underline break-all text-left"
           >
             {PRODUCT_URL}
           </button>
@@ -63,7 +63,7 @@ function About() {
           Copyright © 2026{" "}
           <button
             onClick={() => openUrl("https://nanogram.jp/")}
-            className="text-blue-600 dark:text-blue-400 hover:underline"
+            className="accent-text hover:underline"
           >
             nanogram, llc.
           </button>

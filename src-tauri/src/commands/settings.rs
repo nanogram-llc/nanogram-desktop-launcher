@@ -31,6 +31,10 @@ pub async fn update_settings(
         *current = settings.hotkey.clone();
     }
 
+    // Tap count / interval can change without the hotkey key itself changing,
+    // so this is applied unconditionally.
+    hotkey::set_tap_config(settings.hotkey_taps, settings.hotkey_interval_ms);
+
     // Apply new hotkey mode if changed
     if hotkey_changed {
         hotkey::apply_hotkey(&app, &settings.hotkey)?;
@@ -38,6 +42,11 @@ pub async fn update_settings(
 
     // Apply autostart (Windows registry / macOS LaunchAgent)
     apply_autostart(&app, settings.autostart);
+
+    // Cache placement for the hotkey path (move_and_show can't read the file).
+    if let Ok(mut placement) = state.window_placement.lock() {
+        *placement = (settings.window_position.clone(), settings.window_margin);
+    }
 
     save_settings_to_file(&state.settings_path, &settings)
 }

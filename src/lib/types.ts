@@ -34,6 +34,13 @@ export interface SectionConfig {
   visible: boolean;
 }
 
+export type WindowPosition =
+  | "center"
+  | "top-left"
+  | "top-right"
+  | "bottom-left"
+  | "bottom-right";
+
 export interface Settings {
   hotkey: string;
   autostart: boolean;
@@ -47,6 +54,30 @@ export interface Settings {
   pinned_rows: number;
   debug_log: boolean;
   show_evac_button: boolean;
+  /** Consecutive taps required to toggle the launcher (2 or 3). */
+  hotkey_taps: number;
+  /** Max gap between taps in milliseconds (200-800). */
+  hotkey_interval_ms: number;
+  window_position: WindowPosition;
+  /** Margin from the screen edge in logical px (corner positions only). */
+  window_margin: number;
+  /** Create a daily backup on startup. */
+  auto_backup: boolean;
+  accent_color: "blue" | "green" | "purple" | "amber" | "rose" | "custom";
+  /** Hex colour used when accent_color is "custom". */
+  accent_custom: string;
+  /** Absolute path to the launcher background image; empty = none. */
+  background_image: string;
+  /** Darkening over the background image, 0-100. */
+  background_dim: number;
+  /** Background image zoom, 100-300 (%). Above 100 crops to the window. */
+  background_scale: number;
+  /** Launcher window opacity, 50-100. 100 = fully opaque. */
+  window_opacity: number;
+  /** Launcher text colour. */
+  text_color: "auto" | "light" | "dark" | "custom";
+  /** Hex colour used when text_color is "custom". */
+  text_custom: string;
 }
 
 export interface EvacStatus {

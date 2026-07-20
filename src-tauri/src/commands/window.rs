@@ -85,12 +85,30 @@ pub async fn set_blur_hide(state: State<'_, AppState>, enabled: bool) -> Result<
 
 /// Re-apply window vibrancy when theme changes (light/dark).
 /// `dark` = true → dark Mica/Acrylic, false → light.
+///
+/// `plain` disables the native backdrop entirely. Mica/Acrylic composite the
+/// desktop behind the webview, which shows through a custom background image
+/// and washes out reduced-opacity backgrounds — in those modes the CSS layer
+/// has to be the only thing painting.
 #[tauri::command]
-pub async fn set_vibrancy_theme(app: tauri::AppHandle, dark: bool) -> Result<(), String> {
+pub async fn set_vibrancy_theme(
+    app: tauri::AppHandle,
+    dark: bool,
+    plain: Option<bool>,
+) -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
         if let Some(window) = app.get_webview_window("main") {
-            use window_vibrancy::{apply_acrylic, apply_mica};
+            use window_vibrancy::{apply_acrylic, apply_mica, clear_acrylic, clear_mica};
+
+            if plain.unwrap_or(false) {
+                // Either call fails when that effect was never applied; the
+                // goal is just to end up with no backdrop.
+                let _ = clear_mica(&window);
+                let _ = clear_acrylic(&window);
+                return Ok(());
+            }
+
             if apply_mica(&window, Some(dark)).is_ok() {
                 return Ok(());
             }
@@ -103,8 +121,78 @@ pub async fn set_vibrancy_theme(app: tauri::AppHandle, dark: bool) -> Result<(),
         }
     }
     #[cfg(not(target_os = "windows"))]
-    let _ = (app, dark);
+    let _ = (app, dark, plain);
     Ok(())
+}
+
+/// Copy a user-chosen background image next to the EXE and return the stored
+/// path. Copying keeps the portable layout self-contained: the theme survives
+/// the original file being moved, renamed or deleted, and travels with the
+/// folder to another machine.
+#[tauri::command]
+pub async fn set_background_image(
+    state: State<'_, AppState>,
+    source: String,
+) -> Result<String, String> {
+    let src = std::path::Path::new(&source);
+    if !src.is_file() {
+        return Err("画像ファイルが見つかりません".to_string());
+    }
+    let ext = src
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("png")
+        .to_lowercase();
+
+    let base = std::path::Path::new(&state.settings_path)
+        .parent()
+        .unwrap_or_else(|| std::path::Path::new("."))
+        .to_path_buf();
+    let theme_dir = base.join("theme");
+    std::fs::create_dir_all(&theme_dir).map_err(|e| e.to_string())?;
+
+    // Drop any previous image so stale extensions don't accumulate.
+    if let Ok(rd) = std::fs::read_dir(&theme_dir) {
+        for entry in rd.flatten() {
+            let p = entry.path();
+            if p.file_stem().and_then(|s| s.to_str()) == Some("background") {
+                let _ = std::fs::remove_file(p);
+            }
+        }
+    }
+
+    let dest = theme_dir.join(format!("background.{}", ext));
+    std::fs::copy(src, &dest).map_err(|e| format!("画像のコピーに失敗しました: {}", e))?;
+    Ok(dest.to_string_lossy().to_string())
+}
+
+/// Read the stored background image as a base64 data URI for the webview.
+/// The webview can't load arbitrary local paths, so the bytes are inlined.
+#[tauri::command]
+pub async fn get_background_image_data(path: String) -> Result<String, String> {
+    use base64::Engine;
+
+    let p = std::path::Path::new(&path);
+    if !p.is_file() {
+        return Err("画像ファイルが見つかりません".to_string());
+    }
+    let bytes = std::fs::read(p).map_err(|e| e.to_string())?;
+    let mime = match p
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_lowercase()
+        .as_str()
+    {
+        "jpg" | "jpeg" => "image/jpeg",
+        "gif" => "image/gif",
+        "webp" => "image/webp",
+        "bmp" => "image/bmp",
+        "avif" => "image/avif",
+        _ => "image/png",
+    };
+    let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
+    Ok(format!("data:{};base64,{}", mime, b64))
 }
 
 #[tauri::command]

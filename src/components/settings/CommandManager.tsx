@@ -156,11 +156,11 @@ function CommandManager() {
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
           placeholder="コマンドを検索..."
-          className="flex-1 px-3 py-2 text-sm bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 outline-none focus:border-blue-400"
+          className="flex-1 px-3 py-2 text-sm bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 outline-none accent-focus"
         />
         <button
           onClick={openAdd}
-          className="px-3 py-2 text-xs font-medium bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors whitespace-nowrap"
+          className="px-3 py-2 text-xs font-medium accent-bg text-white rounded-lg transition-colors whitespace-nowrap"
         >
           + 追加
         </button>
@@ -233,7 +233,7 @@ function CommandManager() {
                   value={edit.name}
                   onChange={(e) => setEdit({ ...edit, name: e.target.value })}
                   placeholder="例: プロジェクトをビルド"
-                  className="w-full px-3 py-2 text-sm bg-gray-100 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg text-gray-900 dark:text-gray-100 outline-none focus:border-blue-400"
+                  className="w-full px-3 py-2 text-sm bg-gray-100 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg text-gray-900 dark:text-gray-100 outline-none accent-focus"
                   autoFocus
                 />
               </div>
@@ -248,7 +248,7 @@ function CommandManager() {
                     onClick={() => setEdit({ ...edit, shell: "cmd" })}
                     className={`flex-1 px-3 py-2 text-xs rounded-lg border transition-colors ${
                       edit.shell === "cmd"
-                        ? "bg-blue-500 text-white border-blue-500"
+                        ? "accent-bg text-white accent-border"
                         : "bg-gray-100 dark:bg-gray-900 text-gray-700 dark:text-gray-300 border-gray-200 dark:border-gray-700 hover:bg-gray-200 dark:hover:bg-gray-800"
                     }`}
                   >
@@ -259,7 +259,7 @@ function CommandManager() {
                     onClick={() => setEdit({ ...edit, shell: "pwsh" })}
                     className={`flex-1 px-3 py-2 text-xs rounded-lg border transition-colors ${
                       edit.shell === "pwsh"
-                        ? "bg-blue-500 text-white border-blue-500"
+                        ? "accent-bg text-white accent-border"
                         : "bg-gray-100 dark:bg-gray-900 text-gray-700 dark:text-gray-300 border-gray-200 dark:border-gray-700 hover:bg-gray-200 dark:hover:bg-gray-800"
                     }`}
                   >
@@ -287,7 +287,7 @@ function CommandManager() {
                   }
                   rows={8}
                   spellCheck={false}
-                  className="w-full px-3 py-2 text-sm font-mono bg-gray-100 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg text-gray-900 dark:text-gray-100 outline-none focus:border-blue-400 resize-y"
+                  className="w-full px-3 py-2 text-sm font-mono bg-gray-100 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg text-gray-900 dark:text-gray-100 outline-none accent-focus resize-y"
                 />
                 <div className="text-[10px] text-gray-500 dark:text-gray-500 mt-1">
                   {edit.shell === "pwsh"
@@ -304,7 +304,7 @@ function CommandManager() {
                     onChange={(e) =>
                       setEdit({ ...edit, admin: e.target.checked })
                     }
-                    className="rounded accent-blue-500"
+                    className="rounded accent-input"
                   />
                   管理者として実行
                 </label>
@@ -315,7 +315,7 @@ function CommandManager() {
                     onChange={(e) =>
                       setEdit({ ...edit, keepOpen: e.target.checked })
                     }
-                    className="rounded accent-blue-500"
+                    className="rounded accent-input"
                   />
                   実行後もウィンドウを閉じない
                 </label>
@@ -333,7 +333,7 @@ function CommandManager() {
               <button
                 onClick={handleSave}
                 disabled={saving}
-                className="px-4 py-2 text-sm font-medium bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors disabled:opacity-50"
+                className="px-4 py-2 text-sm font-medium accent-bg text-white rounded-lg transition-colors disabled:opacity-50"
               >
                 {saving ? "保存中..." : "保存"}
               </button>
