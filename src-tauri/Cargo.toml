@@ -27,7 +27,7 @@ uuid = { version = "1", features = ["v4"] }
 base64 = "0.22"
 image = { version = "0.25", default-features = false, features = ["png", "ico"] }
 tokio = { version = "1", features = ["full"] }
-window-vibrancy = "0.5"
+window-vibrancy = "0.6"
 walkdir = "2"
 chrono = "0.4"
 log = "0.4"
